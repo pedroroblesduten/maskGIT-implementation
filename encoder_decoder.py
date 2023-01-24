@@ -1,6 +1,6 @@
+
 import torch
 import torch.nn as nn
-from cnn_utils import Swish, NonLocal, UpSampleBlock, DownSampleBlock
 
 # Architecure from the original JAX implementation from Google Research, but here in PyTorch
 # https://github.com/google-research/maskgit/blob/main/maskgit/nets/vqgan_tokenizer.py
@@ -8,81 +8,90 @@ from cnn_utils import Swish, NonLocal, UpSampleBlock, DownSampleBlock
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_c, out_c):
+        super().__init__()
         self.in_c = in_c
         self.out_c = out_c
-        self.group_norm = nn.GroupNorm(num_groups=32,
-                                       num_channels=in_ch,
+        self.group_norm1 = nn.GroupNorm(num_groups=32,
+                                       num_channels=in_c,
                                        eps=1e-6, affine=True)
         self.relu = nn.ReLU()
         self.conv1 = nn.Conv2d(in_channels=in_c,
-                               out_channels=in_c,
-                               kernel_size=3
-                               stride=1
-                               padding=1)
-
-        self.conv2 = nn.Conv2d(in_channels=in_c,
-                               out_channels=in_c,
+                               out_channels=out_c,
                                kernel_size=3,
                                stride=1,
                                padding=1)
 
+        self.group_norm2 = nn.GroupNorm(num_groups=32,
+                                       num_channels=out_c,
+                                       eps=1e-6, affine=True)
+
+        self.conv2 = nn.Conv2d(in_channels=out_c,
+                               out_channels=out_c,
+                               kernel_size=3,
+                               stride=1,
+                               padding=1)
         self.channel_up = nn.Conv2d(in_c, out_c, 1, 1, 0)
 
     def forward(self, x):
         res = x
-        x = self.group_norm(x)
+        x = self.group_norm1(x)
         x = self.relu(x)
         x = self.conv1(x)
-        x = self.group_norm(x)
+        x = self.group_norm2(x)
         x = self.relu(x)
         x = self.conv2(x)        
-        if self.in_c !+ self.out_c:
+        if self.in_c != self.out_c:
             res = self.channel_up(res)
-        out = res + x
+            out = res + x
+        else:
+            out = res + x
+        return out
 
 class ResidualStack(nn.Module):
-    def __init__(self, in_channels, res_channels, num_residual_layers):
+    def __init__(self, in_ch, res_ch, num_residual_layers):
         super().__init__()
         self.num_residual_layers = num_residual_layers
         self.res_layers = nn.ModuleList([
-            ResidualBlock(in_channels, res_channels)
+            ResidualBlock(in_ch, res_ch)
             for _ in range(self.num_residual_layers)
         ])
 
     def forward(self, x):
-        for i in range(self._num_residual_layers):
-            x = self.res_layers[i](x)
+        for res_layer in self.res_layers:
+            x = res_layer(x)
         return x
 
 class Encoder(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.mult_ch = [1, 1, 2, 2, 4]
+        self.num_blocks= len(self.mult_ch)
         self.conv_1 = nn.Conv2d(3, 128,
                       kernel_size=3,
                       stride=1,
                       padding=1)
-
         self.layers_1 = nn.ModuleList()
-        for i in range(arg.num_blocks):
-            in_channels = 128*self.mult_ch[i]
-            self.layers.append(ResidualStack(in_channels, in_channels, args.num_res_blocks))
-            if i < blocks - 1:
-                self.layers.append(nn.Conv2d(in_channels, in_channels, 4, 2, 1))
-        self.layers_2 = ResidualStack(in_channels, in_channels, args.num_res_blocks)
+        in_channel = 128
+        for i in range(self.num_blocks):
+            out_channel = in_channel*self.mult_ch[i]
+            for _ in range(args.num_res_blocks):
+                self.layers_1.append(ResidualBlock(in_channel, out_channel))
+                in_channel = out_channel
+            if i < (self.num_blocks - 1):
+                self.layers_1.append(nn.Conv2d(out_channel, out_channel, 4, 2, 1))
+
+        self.layers_2 = ResidualStack(in_channel, in_channel, args.num_res_blocks)
         self.group_norm = nn.GroupNorm(num_groups=32,
-                                       num_channels=in_ch,
+                                       num_channels=in_channel,
                                        eps=1e-6, affine=True)
         self.relu = nn.ReLU()
-        self.conv_2 = nn.Conv2d(in_channels,args.latent_dim, 1)
+        self.conv_2 = nn.Conv2d(in_channel, args.latent_dim, 1)
 
     def forward(self, x):
         x = self.conv_1(x)
-        x = self.layers_1(x)
-        for layer in self.layers_1:
-            x = layer(x)
-        for layer in self.layers_2:
-            x = layer(x)
+        for layer1 in self.layers_1:
+            x = layer1(x)
+        x = self.layers_2(x)
         x = self.group_norm(x)
         x = self.conv_2(x)
 
