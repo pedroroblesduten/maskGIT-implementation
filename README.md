@@ -2,3 +2,5 @@ Personal implementation (in pytorch) of the paper "MaskGIT: Masked Generative Im
 Using the following implementations as a base:
 1) https://github.com/google-research/maskgit
 2) https://github.com/dome272/MaskGIT-pytorch
+
+--> WORK IN PROGRESS <--
