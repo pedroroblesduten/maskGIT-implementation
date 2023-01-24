@@ -1,6 +1,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 # Architecure from the original JAX implementation from Google Research, but here in PyTorch
 # https://github.com/google-research/maskgit/blob/main/maskgit/nets/vqgan_tokenizer.py
@@ -61,10 +62,22 @@ class ResidualStack(nn.Module):
             x = res_layer(x)
         return x
 
+class upSample(nn.Module):
+    def __init__(self, ch):
+        super().__init__()
+        self.conv = nn.Conv2d(ch, ch,
+                              kernel_size=3,
+                              stride=1,
+                              padding=1)
+    def forward(self, x):
+        x = F.interpolate(x, scale_factor=2.)
+        x = self.conv(x)
+        return x
+
 class Encoder(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.mult_ch = [1, 1, 2, 2, 4]
+        self.mult_ch = [1, 2]
         self.num_blocks= len(self.mult_ch)
         self.conv_1 = nn.Conv2d(3, 128,
                       kernel_size=3,
@@ -95,10 +108,54 @@ class Encoder(nn.Module):
         x = self.group_norm(x)
         x = self.conv_2(x)
 
+        return x 
+
+
+class Decoder(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.mult_ch = [1, 2]
+        self.num_blocks = len(self.mult_ch)
+
+        self.conv_in = nn.Conv2d(args.latent_dim, 512,
+                                 kernel_size=3,
+                                 stride=1,
+                                 padding=1)
+        self.res_blocks = ResidualStack(512, 512, args.num_res_blocks)
+        self.layers = nn.ModuleList()
+        in_channel = 512
+        for i in reversed(range(self.num_blocks)):
+            out_channel = in_channel*self.mult_ch[i]
+            for _ in range(args.num_res_blocks):
+                self.layers.append(ResidualBlock(in_channel, out_channel))
+                in_channel = out_channel
+            if i > 0:
+                self.layers.append(upSample(in_channel))
+        self.group_norm = nn.GroupNorm(num_groups=32,
+                                       num_channels=in_channel,
+                                       eps=1e-6, affine=True)
+        self.relu = nn.ReLU()
+        self.conv_out = nn.Conv2d(in_channel, 3,
+                                  kernel_size=3,
+                                  stride=1,
+                                  padding=1)
+
+    def forward(self, x):
+        x = self.conv_in(x)
+        x = self.res_blocks(x)
+        print(x.shape)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.group_norm(x)
+        x = self.relu(x)
+        x = self.conv_out(x)
+
         return x
 
 
 
 
-
             
+
+
+
