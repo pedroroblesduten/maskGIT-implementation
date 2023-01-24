@@ -22,4 +22,5 @@ if __name__ == '__main__':
         enc_out = encoder(img)
         print(enc_out.shape)
         dec_out = decoder(enc_out)
+        print(dec_out.shape)
 
