@@ -77,7 +77,7 @@ class upSample(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.mult_ch = [1, 2]
+        self.mult_ch = [1, 1, 2, 2, 4]
         self.num_blocks= len(self.mult_ch)
         self.conv_1 = nn.Conv2d(3, 128,
                       kernel_size=3,
@@ -114,7 +114,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.mult_ch = [1, 2]
+        self.mult_ch = [1, 1, 2, 2, 4]
         self.num_blocks = len(self.mult_ch)
 
         self.conv_in = nn.Conv2d(args.latent_dim, 512,
@@ -125,7 +125,7 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList()
         in_channel = 512
         for i in reversed(range(self.num_blocks)):
-            out_channel = in_channel*self.mult_ch[i]
+            out_channel = 128*self.mult_ch[i]
             for _ in range(args.num_res_blocks):
                 self.layers.append(ResidualBlock(in_channel, out_channel))
                 in_channel = out_channel
