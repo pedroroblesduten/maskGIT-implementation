@@ -102,11 +102,16 @@ class Embeddings(nn.Module):
 class MlmLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.linear1 = nn.Linear(config.embedding_dim, config.embedding_dim)
         self.layer_norm = nn.LayerNorm(config.embedding_dim)
+        self.gelu == nn.GELU()
 
-
-
-
+    def forward(self, x):
+        super().__init__()
+        x = self.linear1(x)
+        x = self.gelu(x)
+        x = self.layer_norm(x)
+        return x     
 
 
 # ---- TRANSFORMERS CONFIGURATIONS ----
@@ -124,12 +129,27 @@ class GPTconfig:
 class MaskGITTransformers(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.emb = Embeddings(config)
+        self.pos_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.tk_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.dropout = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList()
         for _ in range config.n_layers:
             self.blocks.append(Block(config))
         self.layernorm = nn.LayerNorm(config.embedding_dim)
-        self.
+        self.mlmlayer = MlmLayer(config)
+        self.bias = nn.Parameter(torch.zeros(self.num_image_tokens+1, args.num_codebook_vectors + 2))
+
+    def forward(self, x):
+        pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0)
+        token_embedding = self.tk_emb(x)
+        positional_embedding = self.pos_emb(pos)
+        x = self.dropout(token_embedding + positional_embedding)
+        from block in self.blocks:
+            x = block(x)
+        x = self.mlmlayer(x)
+        logits = torch.matmul(embed, self.tk_emb.weight.T) + self.bias
+        return logits
+
 
 
 
