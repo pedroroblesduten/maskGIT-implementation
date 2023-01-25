@@ -119,7 +119,7 @@ class GPT(nn.Module):
         self.config = config
 
         self.tk_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
-        self.pos_emv = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.pos_emv = nn.Embedding(config.block_size, config.embedding_dim)
         self.dropout = nn.Dropout(config.dropout)
         self.decoder_blocks = nn.ModuleList()
         for _ in range(config.n_layers):
