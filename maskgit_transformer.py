@@ -54,7 +54,7 @@ class MultiHeadAttn(nn.Module):
     def forward(self, x):
         x = torch.cat([one_head(x) for one_head in self.attn_heads], dim=-1)
         x = self.resid_dropout(self.output_linear(x))
-        return
+        return x
 
 class FeedForward(nn.Module):
     def __init__(self, config):
@@ -76,24 +76,23 @@ class Block(nn.Module):
         super().__init__()
         self.layer_norm1 = nn.LayerNorm(config.embedding_dim)
         self.layer_norm2 = nn.LayerNorm(config.embedding_dim)
-        self.attention = MultiHeadAttention(config)
+        self.attention = MultiHeadAttn(config)
         self.feed_forward = FeedForward(config)
 
     def forward(self, x):        
         x = x + self.attention(self.layer_norm1(x))
         x = x + self.feed_forward(self.layer_norm2(x))
-        return
+        return x
 
 class MlmLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.linear1 = nn.Linear(config.embedding_dim, config.embedding_dim)
+        self.linear_1 = nn.Linear(config.embedding_dim, config.embedding_dim)
         self.layer_norm = nn.LayerNorm(config.embedding_dim)
-        self.gelu == nn.GELU()
+        self.gelu = nn.GELU()
 
     def forward(self, x):
-        super().__init__()
-        x = self.linear1(x)
+        x = self.linear_1(x)
         x = self.gelu(x)
         x = self.layer_norm(x)
         return x     
@@ -122,17 +121,24 @@ class MaskGITTransformer(nn.Module):
             self.blocks.append(Block(config))
         self.layernorm = nn.LayerNorm(config.embedding_dim)
         self.mlmlayer = MlmLayer(config)
-        self.bias = nn.Parameter(torch.zeros(self.num_image_tokens+1, args.num_codebook_vectors + 2))
+        self.bias = nn.Parameter(torch.zeros(config.block_size, config.vocab_size))
 
     def forward(self, x):
-        pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0)
+        b, t = x.size()
+        pos = torch.arange(0, t, dtype=torch.long, device=x.device).unsqueeze(0)
+
         token_embedding = self.tk_emb(x)
         positional_embedding = self.pos_emb(pos)
+
         x = self.dropout(token_embedding + positional_embedding)
+
         for block in self.blocks:
             x = block(x)
+
         x = self.mlmlayer(x)
+
         logits = torch.matmul(x, self.tk_emb.weight.T) + self.bias
+
         return logits
 
 

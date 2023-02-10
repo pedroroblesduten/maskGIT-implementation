@@ -1,5 +1,6 @@
 import torch
 import torch.nn
+import torch.nn.functional as F
 import argparse
 from my_minGPT import GPT, GPTconfig
 from maskgit_transformer import MaskGITTransformer, MaskGITconfig
@@ -31,16 +32,9 @@ if __name__ == '__main__':
     # args.verbose = True
     
     # GPT ARCHITECURE CONFIG PARAMETERS
-    gptconf = GPTconfig(block_size = 1574, # how far back does the model look? i.e. context size
-                        vocab_size = 1025,
-                        n_layers = 10,
-                        n_heads = 8,
-                        embedding_dim = 768, # size of the model
-                        dropout = 0.# for determinism
-                        )
 
-    maskgitconf = GPTconfig(block_size = 1574, # how far back does the model look? i.e. context size
-                        vocab_size = 1025,
+    maskgitconf = GPTconfig(block_size = 257, # how far back does the model look? i.e. context size
+                        vocab_size = 1026,
                         n_layers = 10,
                         n_heads = 8,
                         embedding_dim = 768, # size of the model
@@ -60,6 +54,8 @@ if __name__ == '__main__':
             return 1 - ratio ** 3
 
     vq_vae = VQVAE(args)
+    transformer = MaskGITTransformer(maskgitconf).to('cuda')
+    
     x = torch.randn(2, 3, 256, 256)
     x = x.to('cuda')
     print(x.shape)
@@ -82,11 +78,12 @@ if __name__ == '__main__':
 
     target = torch.cat((sos_tokens, z_indices), dim=1)
 
-    #logits = self.transformer(a_indices)
     
     print('indice mask', a_indices.shape)
     print('targer', target.shape)
-
-
+    logits = transformer(a_indices)
+    print('logits', logits.shape)
+    loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+    print(loss)
     print(f'MASKGIT CONFIGURATIONS: {maskgitconf}')
     #train_GPT = trainMaskGITTransformers(args, gptconf, run_vqvae=False)
