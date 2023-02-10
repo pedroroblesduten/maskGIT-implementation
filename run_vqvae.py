@@ -3,8 +3,7 @@ import torch.nn as nn
 import argparse
 import numpy as np
 import os
-from utils import fake_dataset
-from vq_vae training import VQVAE
+from vqvae_training import VQVAE
 from load_data import loadData, load_for_forward
 
 class runVQVAE:

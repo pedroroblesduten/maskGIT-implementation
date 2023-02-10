@@ -77,6 +77,7 @@ class upSample(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, args):
         super().__init__()
+        self.verbose = args.verbose
         self.mult_ch = [1, 1, 2, 2, 4]
         self.num_blocks= len(self.mult_ch)
         self.conv_1 = nn.Conv2d(3, 128,
@@ -86,7 +87,7 @@ class Encoder(nn.Module):
         self.layers_1 = nn.ModuleList()
         in_channel = 128
         for i in range(self.num_blocks):
-            out_channel = in_channel*self.mult_ch[i]
+            out_channel = 128*self.mult_ch[i]
             for _ in range(args.num_res_blocks):
                 self.layers_1.append(ResidualBlock(in_channel, out_channel))
                 in_channel = out_channel
@@ -102,11 +103,21 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         x = self.conv_1(x)
+        if self.verbose:
+            print(f'Shape after conv_1; {x.shape}')
         for layer1 in self.layers_1:
             x = layer1(x)
+        if self.verbose:
+            print(f'Shape after layers1: {x.shape}')
         x = self.layers_2(x)
+        if self.verbose:
+            print(f'Shape after layers2: {x.shape}')
         x = self.group_norm(x)
+        if self.verbose:
+            print(f'Shape after groupnorm {x.shape}')
         x = self.conv_2(x)
+        if self.verbose:
+            print(f'Shape after conv2: {x.shape}')
 
         return x 
 

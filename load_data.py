@@ -49,17 +49,17 @@ def loadData(args, batch_size=None):
     s_test = data_len*0.1 + s_val
 
     train_set = all_imgs[:s_train]
-    val_set = all_imgs[s_train:s_val]a
+    val_set = all_imgs[s_train:s_val]
     test_set = all_imgs[s_val:s_test]
     
 
-    train_data = ImagePaths(args.dataset_path, train_set size=256)
+    train_data = ImagePaths(args.dataset_path, train_set, size=256)
     train_loader = DataLoader(train_data, batch_size=batchsize, shuffle=True)
 
-    train_data = ImagePaths(args.dataset_path, val_set size=256)
+    train_data = ImagePaths(args.dataset_path, val_set, size=256)
     val_loader = DataLoader(train_data, batch_size=batchsize, shuffle=True)
 
-    train_data = ImagePaths(args.dataset_path, test_set size=256)
+    train_data = ImagePaths(args.dataset_path, test_set, size=256)
     test_loader = DataLoader(train_data, batch_size=batchsize, shuffle=True)
 
     return train_loader, val_loader, test_loader
@@ -81,7 +81,7 @@ def saveIndex(args, idx_dict, img_set):
     save_path = args.save_index_path
     full_path = os.path.join(save_path, img_set)
     for img_name in idx_dict:
-        idx = idx_dict[img_name].
+        idx = idx_dict[img_name]
         np.save(os.path.join(full_path, img_name), idx+'.npy')
 
 def loadIndexForward(args, img_set):
@@ -109,7 +109,7 @@ def loadIndex(args, img_set):
     dataloader = DataLoader(tensor_of_tensors, batch_size=batch_size, shuffle=True)
     return dataloader
 
-def saveGeneratedImage(args, img_dict, img_set)
+def saveGeneratedImage(args, img_dict, img_set):
     for file in img_dict:
         original, reconstruction = img_dict[file][0], img_dict[file][1]
         original = original[0, :, :, :]

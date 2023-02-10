@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from load_data import loadData
+from encoder_decoder import Encoder, Decoder
+from codebook import CodebookEMA
 
 
 class VQVAE(nn.Module):
@@ -9,14 +11,14 @@ class VQVAE(nn.Module):
         self.verbose = args.verbose
         self.use_ema = args.use_ema
 
-        self.encoder = Encoder3D(args, verbose=self.verbose).to(device=args.device)
-        self.decoder = Decoder3D(args, verbose=self.verbose).to(device=args.device)
+        self.encoder = Encoder(args).to(device=args.device)
+        self.decoder = Decoder(args).to(device=args.device)
         # if self.use_ema:
-        self.codebook = CodebookEMA(args, verbose=self.verbose).to(device=args.device)
+        self.codebook = CodebookEMA(args).to(device=args.device)
         #else:
         #    self.codebook = Codebook3D(args, verbose=self.verbose).to(device=args.device)
         self.quant_conv = nn.Conv2d(args.latent_dim, args.latent_dim, 1).to(device=args.device)
-        self.post_quant_conv = nn.Conv32(args.latent_dim, args.latent_dim, 1).to(device=args.device)
+        self.post_quant_conv = nn.Conv2d(args.latent_dim, args.latent_dim, 1).to(device=args.device)
 
     def forward(self, imgs):
         encoded_images = self.encoder(imgs)
@@ -29,11 +31,23 @@ class VQVAE(nn.Module):
         post_quant_conv_mapping = self.post_quant_conv(codebook_mapping)
         decoded_images = self.decoder(post_quant_conv_mapping)
         if self.verbose:
-            print(f'Output shape: {decoded_images.shape})
+            print(f'Output shape: {decoded_images.shape}')
 
         return decoded_images, codebook_indices, q_loss
 
-class vqvaeTraining():A
+    def encode(self, x):
+        encoded_images = self.encoder(x)
+        quantized_encoded_images = self.quant_conv(encoded_images)
+        codebook_mapping, codebook_indices, q_loss = self.codebook(quantized_encoded_images)
+        return codebook_mapping, codebook_indices
+
+    def decode(self, z):
+        quantized_codebook_mapping = self.post_quant_conv(z)
+        decoded_images = self.decoder(quantized_codebook_mapping)
+        return decoded_images
+
+
+class vqvaeTraining():
     def __init__(self, args, verbose=False):
 
         self.verbose = verbose

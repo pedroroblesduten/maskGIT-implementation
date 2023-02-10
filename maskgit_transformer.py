@@ -84,21 +84,6 @@ class Block(nn.Module):
         x = x + self.feed_forward(self.layer_norm2(x))
         return
 
-class Embeddings(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.pos_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
-        self.tk_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
-        self.dropout = nn.Dropout(config.dropout)
-        
-
-    def forward(self, x):
-        pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0)
-        token_embedding = self.tk_emb(x)
-        positional_embedding = self.pos_emb(pos)
-        x = self.dropout(token_embedding + positional_embedding)
-        return x
-
 class MlmLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -114,9 +99,9 @@ class MlmLayer(nn.Module):
         return x     
 
 
-# ---- TRANSFORMERS CONFIGURATIONS ----
+# ---- TRANSFORMERS CONFIGURATIONS ----a
 @dataclass
-class GPTconfig:
+class MaskGITconfig:
     block_size: int = 1025
     vocab_size: int = 1025
     n_layers: int = 12
@@ -126,14 +111,14 @@ class GPTconfig:
 
 
 # --- THE MODEL ---
-class MaskGITTransformers(nn.Module):
+class MaskGITTransformer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.pos_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
         self.tk_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
-        self.dropout = nn.Dropout(config.dropout)
+        self.dropout = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList()
-        for _ in range config.n_layers:
+        for _ in range(config.n_layers):
             self.blocks.append(Block(config))
         self.layernorm = nn.LayerNorm(config.embedding_dim)
         self.mlmlayer = MlmLayer(config)
@@ -144,10 +129,10 @@ class MaskGITTransformers(nn.Module):
         token_embedding = self.tk_emb(x)
         positional_embedding = self.pos_emb(pos)
         x = self.dropout(token_embedding + positional_embedding)
-        from block in self.blocks:
+        for block in self.blocks:
             x = block(x)
         x = self.mlmlayer(x)
-        logits = torch.matmul(embed, self.tk_emb.weight.T) + self.bias
+        logits = torch.matmul(x, self.tk_emb.weight.T) + self.bias
         return logits
 
 
