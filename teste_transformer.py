@@ -70,6 +70,8 @@ if __name__ == '__main__':
     sample = torch.rand(z_indices.shape, device=z_indices.device).topk(r, dim=1).indices
     mask = torch.zeros(z_indices.shape, dtype=torch.bool, device=z_indices.device)
     mask.scatter_(dim=1, index=sample, value=True)
+    print('MASK', mask.shape)
+    print(mask)
 
     masked_indices = 1025 * torch.ones_like(z_indices, device=z_indices.device)
     a_indices = mask * z_indices + (~mask) * masked_indices

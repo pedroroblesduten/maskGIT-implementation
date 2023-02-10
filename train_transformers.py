@@ -13,14 +13,13 @@ import math
 
 #Training for GPT follows: https://github.com/karpathy/nanoGPT/blob/master/train.py
 
-class trainGPT:
-    def __init__(self, args, config, run_vqvae, training):
+class trainTransformers:
+    def __init__(self, args, config):
 
-        self.load_index = LoadSaveIndex(args)
         self.config = config
-        self.flat_ordering = args.flat_ordering
         self.transformer, self.vq_vae = self.getModels(args, config)
         self.codebook = self.vq_vae.codebook.embedding.weight.data
+
         self.create_ckpt(args.gpt_save_ckpt)
         self.train(args, config, run_vqvae)
 
@@ -58,7 +57,6 @@ class trainGPT:
 
         opt_dict = dict(
             learning_rate = 6e-4,
-            max_iters = 600000, 
             weight_decay = 1e-2,
             betas = (0.9,0.95)
         )
@@ -93,7 +91,6 @@ class trainGPT:
             masked_indices = mask * z_indices + (~mask) * masked_indices
 
             masked_indices = torch.cat((sos_tokens, a_indices), dim=1)
-
             target = torch.cat((sos_tokens, z_indices), dim=1)
 
             return masked_indices, target
@@ -122,7 +119,7 @@ class trainGPT:
         #        LOOP        #
         ######################
 
-        print(f'--- STARTING MASKGIT TRANSFORMER TRAINING FOR {self.classes[1]} ---')
+        print(f'--- STARTING MASKGIT TRANSFORMER TRAINING ---')
         iter_num = 0
         all_train_loss = []
         all_val_loss = []
@@ -162,18 +159,11 @@ class trainGPT:
                     
                     
             model.eval()
-            for val_batch in X_val_index:
-                
-                #RUNNING VQ_VAE 
+            for val_batch in X_val_index:                
                 imgs = imgs.to(args.device)
-                _, indices = self.vq_vae.encode(x)
-                
-                #MASKING SEQUENCE FOR TRANSFORMER TRAINING
+                _, indices = self.vq_vae.encode(x)                
                 masked_indices, target = maskSequence(indices)
-
-                #RUNNING TRANSFORMER
                 logits = self.transformer(masked_indices)
-
                 optimizer.zero_grad(set_to_none=True)
                 loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))          
                 epoch_val_losses.append(loss.detach().cpu().numpy())
@@ -250,14 +240,14 @@ if __name__ == '__main__':
     # args.verbose = True
     
     # TRANSFORMER ARCHITECURE CONFIG PARAMETERS
-    gptconf = GPTconfig(block_size = 257, # how far back does the model look? i.e. context size
-                        vocab_size = 1026,
-                        n_layers = 10,
-                        n_heads = 8,
-                        embedding_dim = 768, # size of the model
-                        dropout = 0.# for determinism
-                        )
+    transformerConfig = MaskGITconfig(block_size = 257,
+                                      vocab_size = 1026,
+                                      n_layers = 10,
+                                      n_heads = 8,
+                                      embedding_dim = 768,
+                                      dropout = 0.
+                                      )
 
 
-    print(f'GPT CONFIGURATIONS: {gptconf}')
-    train_GPT = trainTransformers(args, gptconf, run_vqvae=True, training=True)
+    print(f'GPT CONFIGURATIONS: {transformerConfig}')
+    train_GPT = trainTransformers(args, transformerConfig)

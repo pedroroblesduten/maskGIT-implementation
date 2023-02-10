@@ -140,15 +140,3 @@ class MaskGITTransformer(nn.Module):
         logits = torch.matmul(x, self.tk_emb.weight.T) + self.bias
 
         return logits
-
-
-
-
-
-
-
-
-
-
-        
-
