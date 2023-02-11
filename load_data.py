@@ -38,6 +38,8 @@ class loadData:
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
+        elif self.dataset == 'CIFAR10':
+            self.dataPath = args.cifar10Path
         self.create_paths(self.dataPath)
 
 
@@ -60,24 +62,44 @@ class loadData:
 
     def getDataloader(self):
         print(' -> Loading data... ')
-
-        trainPath = os.path.join(self.dataPath, 'train')
+        if self.dataset == 'ImageNet':
+            trainPath = os.path.join(self.dataPath, 'train')
         
-        val_txt = os.path.join(self.txtPath, 'val.txt')
-        test_txt = os.path.join(self.txtPath, 'test.txt')
+            val_txt = os.path.join(self.txtPath, 'val.txt')
+            test_txt = os.path.join(self.txtPath, 'test.txt')
 
-        train_dataloader=DataLoader(
+            train_dataloader=DataLoader(
                 torchvision.datasets.ImageFolder(trainPath,transform=self.transform),
                 batch_size=self.batch_size, shuffle=True
-            )
+                )
 
-        val_dataset = ImageDataset(self.readTxt(val_txt, 'val'), self.transform)
-        val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
+            val_dataset = ImageDataset(self.readTxt(val_txt, 'val'), self.transform)
+            val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
 
-        #test_dataset = ImageDataset(self.readTxt(test_txt, 'test'), transform=transform)
-        #test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
+            #test_dataset = ImageDataset(self.readTxt(test_txt, 'test'), transform=transform)
+            #test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
 
-        return train_dataloader, val_dataloader #, test_dataloader
+            return train_dataloader, val_dataloader #, test_dataloader
+        
+        elif self.dataset == 'CIFAR10':
+            
+            cifar10_transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        (0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)
+                    )
+                ])
+            train_loader = torch.utils.data.DataLoader(
+                torchvision.datasets.CIFAR10(self.dataPath, train=True, download=True, 
+                                             transform=cifar10_transform),
+                batch_size=self.batch_size, shuffle=True)
+
+            val_loader = torch.utils.data.DataLoader(
+                torchvision.datasets.CIFAR10(self.dataPath, train=False, download=True, 
+                                             transform=cifar10_transform),
+                batch_size=self.batch_size, shuffle=True)
+
+            return train_loader, val_loader
 
 
 
