@@ -132,16 +132,29 @@ if __name__ == '__main__':
             inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
         
         return masked_tokens.to(torch.int32)
+    def partialImageCreateInputTokens(idx, batch_size, label, start, end):
+        #Create the input tokens passing just some part of the full sequence
+        blank_tokens = torch.ones((batch_size, 256), device=label.device)
+        masked_tokens = mask_token * blank_tokens
+        masked_tokens[:, start:end] = idx[:, start:end]
+        sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * sos_token
 
+        if label is not None:
+            label_tokens = label * torch.ones([batch_size, 1], device=label.device)
+            label_tokens = label_tokens + mask_token
+            masked_tokens = torch.cat((sos_tokens, label_tokens), dim=1)
+            masked_tokens = torch.concat([label_tokens, masked_tokens], dim=-1)
+        else:
+            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
+        
+        return masked_tokens.to(torch.int32)
     def generateTokens(idx=None, label=None):
 
         #Getting inputs
         if idx is None:
             inputs = createInputTokensNormal(batch_size, label)
         else:
-            inputs = torch.hstack((idx, torch.zeros((inputs.shape[0], N - idx.shape[1]), device="cuda", dtype=torch.int).fill_(mask_token)))
-            sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * sos_token
-            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
+            inputs = partialImageCreateInputTokens(idx, batch_size, label, 40, 80)
 
         unknown_tokens_0 = torch.sum(inputs == mask_token, dim=-1)
         current_tokens = inputs
@@ -173,5 +186,5 @@ if __name__ == '__main__':
             generated_tokens = current_tokens[:, 2:]
 
         return generated_tokens
-    gen_tokens = generateTokens(idx=None, label=label)
+    gen_tokens = generateTokens(idx=inp_seq, label=label)
     print('GENERATED TOKENS: ', gen_tokens)

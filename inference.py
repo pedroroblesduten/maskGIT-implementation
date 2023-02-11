@@ -29,6 +29,9 @@ class generateImages:
         self.mask_token = args.mask_token
         self.sos_token = args.sos_token
 
+        self.start = 40
+        self.end = 80
+
         self.gen_iter = args.gen_iter
         self.batch_size = args.batch_size
 
@@ -99,6 +102,23 @@ class generateImages:
         
         return masked_tokens.to(torch.int32)
 
+    def partialImageCreateInputTokens(self, idx, batch_size, label, start, end):
+        #Create the input tokens passing just some part of the full sequence
+        blank_tokens = torch.ones((batch_size, self.latent_dim), device=self.device)
+        masked_tokens = self.mask_token * blank_tokens
+        masked_tokens[start:end] = idx[start:end]
+        sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * self.sos_token
+
+        if label is not None:
+            label_tokens = label * torch.ones([batch_size, 1], device=label.device)
+            label_tokens = label_tokens + self.mask_token
+            masked_tokens = torch.cat((sos_tokens, label_tokens), dim=1)
+            masked_tokens = torch.concat([label_tokens, masked_tokens], dim=-1)
+        else:
+            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
+        
+        return masked_tokens.to(torch.int32)
+
     def getMaskRatio(self, iteration):
         ratio = 1. * (iteration + 1) / self.gen_iter
         return ratio
@@ -109,10 +129,7 @@ class generateImages:
         if idx is None:
             inputs = self.createInputTokensNormal(self.batch_size, label)
         else:
-            inputs = torch.hstack((idx, torch.zeros((inputs.shape[0], N - idx.shape[1]), device="cuda", dtype=torch.int).fill_(self.mask_token_id)))
-            sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * self.sos_token
-            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
-        
+            inputs = self.partialImageCreateInputTokens(idx, self.batch_size, label, self.start, self.end)
         unknown_tokens_0 = torch.sum(inputs == self.mask_token_id, dim=-1)
         current_tokens = inputs
         for it in range(self.gen_iter):
