@@ -6,6 +6,8 @@ from codebook import CodebookEMA
 import argparse
 import os
 from tqdm import tqdm
+import numpy as np
+from PIL import Image
 
 class VQVAE(nn.Module):
     def __init__(self, args):
@@ -50,11 +52,12 @@ class VQVAE(nn.Module):
 
 
 class vqvaeTraining():
-    def __init__(self, args, verbose=False):
+    def __init__(self, args):
 
-        self.verbose = verbose
+        self.verbose = args.verbose
         self.save_ckpt = args.save_ckpt
         self.save_losses = args.save_losses
+        self.dataset = args.dataset
         
         self.vqvae = VQVAE(args)
         self.loader = loadData(args)
@@ -73,6 +76,7 @@ class vqvaeTraining():
     def train(self, args):
 
         train_dataset, val_dataset = self.loader.getDataloader()
+        print(f'Training with {len(train_dataset)*args.batch_size} images')
 
         iterations_per_epoch = len(train_dataset)
         learning_rate = 3e-4
@@ -126,7 +130,7 @@ class vqvaeTraining():
             #Early Stopping
             if val_loss <  best_val_loss:
                 best_val_loss = val_loss
-                torch.save(self.mri_vqvae.state_dict(), os.path.join(self.save_ckpt, 'mri_vqvae_bestVal.pt'))
+                torch.save(self.vqvae.state_dict(), os.path.join(self.save_ckpt, f'vqvae_bestVal_{self.dataset}.pt'))
             else:
                 patience_counter += 1
 
@@ -134,11 +138,22 @@ class vqvaeTraining():
             #    break
 
             if epoch % 10 == 0:
-                np.save(os.path.join(self.save_losses, 'VQVAE_train_loss.npy'), all_train_loss)
-                np.save(os.path.join(self.save_losses, 'VQVAE_val_loss.npy'), all_val_loss)
+                np.save(os.path.join(self.save_losses, f'VQVAE_train_loss_{self.dataset}.npy'), all_train_loss)
+                np.save(os.path.join(self.save_losses, f'VQVAE_val_loss_{self.dataset}.npy'), all_val_loss)
+                
+                self.vqvae.eval()
+                for x, _ in train_dataset:
+                    x = x.to(args.device)
+                    decoded_x, a, b = self.vqvae(x)
+                    img = decoded_x[0, : , :, :].permute(1, 2, 0).cpu().detach().numpy()
+                    image = Image.fromarray(img.astype('uint8'),'RGB')
+                    image.save('teste.png')
+                    break
+
+
             if epoch % 50 == 0:
-                torch.save(self.mri_vqvae.state_dict(), os.path.join(self.save_ckpt, f'mri_vqvae_epoch_{epoch}.pt'))
-        torch.save(self.mri_vqvae.state_dict(), os.path.join(self.save_ckpt, 'mri_vqvae_lastEpoch.pt'))
+                torch.save(self.vqvae.state_dict(), os.path.join(self.save_ckpt, f'vqvae_epoch_{epoch}_{self.dataset}.pt'))
+        torch.save(self.vqvae.state_dict(), os.path.join(self.save_ckpt, f'vqvae_lastEpoch_{self.dataset}.pt'))
 
 
 if __name__ == '__main__': 
@@ -146,9 +161,9 @@ if __name__ == '__main__':
 
     #VQ_VAE ARGS
     parser.add_argument('--latent-dim', type=int, default=256)
-    parser.add_argument('--num_res_blocks', type=int, default=2)
-    parser.add_argument('--verbose', type=str, default=False)
-    parser.add_argument('--num_codebook_vectors', type=int, default=1024)
+    parser.add_argument('--num_res_blocks', type=int, default=4)
+    parser.add_argument('--verbose', type=bool, default=True)
+    parser.add_argument('--num_codebook_vectors', type=int, default=256)
     parser.add_argument('--beta', type=float, default=0.25)
     parser.add_argument('--use_ema', type=bool, default=True)
     parser.add_argument('--learning-rate', type=float, default=2.25e-05)
@@ -156,13 +171,14 @@ if __name__ == '__main__':
     parser.add_argument('--beta2', type=float, default=0.9)
     
     #DATASET ARGS
-    parser.add_argument('--dataset', type=str, default='ImageNet')
+    parser.add_argument('--dataset', type=str, default='CIFAR10')
     parser.add_argument('--imagenetPath', type=str, default='/scratch2/pedroroblesduten/classical_datasets/imagenet')
     parser.add_argument('--imagenetTxtPath', type=str, default='/scratch2/pedroroblesduten/classical_datasets/imagenet/txt_files')
+    parser.add_argument('--cifar10Path', type=str, default='/scratch2/pedroroblesduten/classical_datasets/cifar10')
 
     #TRAINING ARGS
     parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--patience', type=int, default=10)
 

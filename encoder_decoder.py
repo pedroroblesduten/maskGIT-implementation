@@ -78,7 +78,7 @@ class Encoder(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.verbose = args.verbose
-        self.mult_ch = [1, 1, 2, 2, 4]
+        self.mult_ch = [1, 1, 2, 2]
         self.num_blocks= len(self.mult_ch)
         self.conv_1 = nn.Conv2d(3, 128,
                       kernel_size=3,
@@ -125,7 +125,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.mult_ch = [1, 1, 2, 2, 4]
+        self.mult_ch = [1, 1, 2, 2]
         self.num_blocks = len(self.mult_ch)
 
         self.conv_in = nn.Conv2d(args.latent_dim, 512,
