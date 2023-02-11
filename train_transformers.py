@@ -20,6 +20,9 @@ class trainTransformers:
         self.transformer, self.vq_vae = self.getModels(args, config)
         self.codebook = self.vq_vae.codebook.embedding.weight.data
 
+        self.sos_token = args.sos_token
+        self.mask_token = args.mask_token
+
         self.create_ckpt(args.gpt_save_ckpt)
         self.train(args, config, run_vqvae)
 
@@ -77,23 +80,31 @@ class trainTransformers:
             coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
             return min_lr + coeff * (learning_rate - min_lr)
 
-        def maskSequence(seq):
+        def maskSequence(seq, label=None):
+            #TODO: available training for no label data in the same model
             z_indices = seq.view(x.shape[0], -1)
 
-            sos_tokens = torch.ones(x.shape[0], 1, dtype=torch.long, device=z_indices.device) * 1024
+            sos_tokens = torch.ones(x.shape[0], 1, dtype=torch.long, device=z_indices.device) * self.sos_token
 
             r = math.floor(getMask(np.random.uniform(), 'cosine') * z_indices.shape[1])
             sample = torch.rand(z_indices.shape, device=z_indices.device).topk(r, dim=1).indices
             mask = torch.zeros(z_indices.shape, dtype=torch.bool, device=z_indices.device)
             mask.scatter_(dim=1, index=sample, value=True)
 
-            masked_indices = 1025 * torch.ones_like(z_indices, device=z_indices.device)
+            masked_indices = self.mask_token * torch.ones_like(z_indices, device=z_indices.device)
             masked_indices = mask * z_indices + (~mask) * masked_indices
+
 
             masked_indices = torch.cat((sos_tokens, a_indices), dim=1)
             target = torch.cat((sos_tokens, z_indices), dim=1)
 
-            return masked_indices, target
+            if label is not None:
+                label_tokens = label * torch.ones([batch_size, 1])
+                label_tokens = label_tokens + self.mask_token
+                input_tokens = torch.concat([label_tokens, masked_indices], dim=-1)
+                target_tokens = torch.concat([label_tokens, target], dim=-1)
+
+            return input_tokens, target_tokens
 
 
         # -- TRAINING LOOP PARAMETERS -- 
