@@ -32,11 +32,10 @@ class generateImages:
         self.gen_iter = args.gen_iter
         self.batch_size = args.batch_size
 
-
-        self.create_ckpt(args.gpt_save_ckpt)
-        self.train(args, config, run_vqvae)
+        self.transformer, self.vq_vaq = self.getModels(args, config)
         
-
+        self.create_ckpt(args.save_results_path)
+       
     def getModels(self, args, config):
         # LOADING GPT
         transf = GPT(config).to(args.device)
@@ -55,11 +54,11 @@ class generateImages:
         return transf, vq_vae
 
     @staticmethod
-    def create_ckpt(ckpt_path):
-        if not os.path.exists(ckpt_path):
-            os.makedirs(ckpt_path)
+    def create_ckpt(path):
+        if not os.path.exists(path):
+            os.makedirs(path)
 
-    def maskSequence(seq):
+    def maskSequence(self, seq):
         z_indices = seq.view(x.shape[0], -1)
 
         sos_tokens = torch.ones(x.shape[0], 1, dtype=torch.long, device=z_indices.device) * self.sos_token
@@ -77,7 +76,7 @@ class generateImages:
 
         return masked_indices, target, mask
 
-    def maskByConfidence(probs, mask_len):
+    def maskByConfidence(self, probs, mask_len):
         #The add term is just some random noise
         confidence = torch.log(probs) + args.temperature * torch.distributions.gumbel.Gumbel(0, 1).sample(probs.shape).to(logits.device)
         sorted_confidence, _ = torch.sort(confidence, dim=-1)
@@ -91,30 +90,30 @@ class generateImages:
         sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * self.sos_token
 
         if label is not None:
-            label_tokens = label * torch.ones([batch_size, 1])
+            label_tokens = label * torch.ones([batch_size, 1], device=label.device)
             label_tokens = label_tokens + self.mask_token
-            input_tokens = torch.concat([label_tokens, masked_tokens], dim=-1)
-            inputs = torch.cat((sos_tokens, input_tokens), dim=1)
+            masked_tokens = torch.cat((sos_tokens, label_tokens), dim=1)
+            masked_tokens = torch.concat([label_tokens, masked_tokens], dim=-1)
         else:
             inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
         
         return masked_tokens.to(torch.int32)
 
-    def getMaskRatio(iteration):
-        return ratio = 1. * (iteration + 1) / self.gen_iter    
+    def getMaskRatio(self, iteration):
+        ratio = 1. * (iteration + 1) / self.gen_iter
+        return ratio
 
 
     def generateTokens(self, idx=None, label=None):
-        unknown_tokens_0 = torch.sum(inputs == self.mask_token, dim=-1)
-
         #Getting inputs
         if idx is None:
-            inputs = createInputTokensNormal(self.batch_size, label)
+            inputs = self.createInputTokensNormal(self.batch_size, label)
         else:
             inputs = torch.hstack((idx, torch.zeros((inputs.shape[0], N - idx.shape[1]), device="cuda", dtype=torch.int).fill_(self.mask_token_id)))
             sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * self.sos_token
             inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
-
+        
+        unknown_tokens_0 = torch.sum(inputs == self.mask_token_id, dim=-1)
         current_tokens = inputs
         for it in range(self.gen_iter):
             logits = self.transformer(inputs)
@@ -122,13 +121,13 @@ class generateImages:
             unknown_tokens = (current_tokens == self.mask_token)
             sampled_tokens = torch.where(unknown_tokens, pred_tokens, current_tokens)
 
-            r = getMaskRatio(it)
-            mask_ratio = getMask(mask_schedule_ratio, 'cosine')
+            r = self.getMaskRatio(it)
+            mask_ratio = getMask(r, 'cosine')
             
             probs = F.softmax(logits, dim=-1)
             selected_probs = torch.squeeze(torch.take_along_dim(probs, torch.unsqueeze(sampled_tokens, -1), -1), -1)
 
-            selected_probs = torch.where(unknown_map, selected_probs, self.non_mask_confidence)
+            selected_probs = torch.where(unknown_tokens, selected_probs, self.non_mask_confidence)
 
             mask_len = torch.unsqueeze(torch.floor(unknown_tokens_0 * mask_ratio), 1)  
             mask_len = torch.maximum(torch.ones_like(mask_len), torch.minimum(torch.sum(unknown_tokens, dim=-1, keepdim=True)-1, mask_len))

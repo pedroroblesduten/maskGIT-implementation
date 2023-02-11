@@ -104,7 +104,7 @@ class trainTransformers:
                 input_tokens = torch.concat([label_tokens, masked_indices], dim=-1)
                 target_tokens = torch.concat([label_tokens, target], dim=-1)
 
-            return input_tokens, target_tokens
+            return input_tokens.long(), target_tokens.long()
 
 
         # -- TRAINING LOOP PARAMETERS -- 

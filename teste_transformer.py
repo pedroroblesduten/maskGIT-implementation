@@ -6,6 +6,8 @@ from maskgit_transformer import MaskGITTransformer, MaskGITconfig
 import numpy as np
 from vqvae_training import VQVAE
 import math
+#from inference import generateImages
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="GPT_TRAINING")
     parser.add_argument('--gpt_batch_size', type=str, default=2)
@@ -25,6 +27,7 @@ if __name__ == '__main__':
     #PATH ARGS
     parser.add_argument('--save_ckpt', type=str, default='/scratch2/pedroroblesduten/MASKGIT/ckpt')
     parser.add_argument('--save_loss', type=str, default='/scratch2/pedroroblesduten/MASKGIT/losses')
+    parser.add_argument('--save_results_path', type=str, default='/scratch2/pedroroblesduten/MASKGIT/results/')
 
     args = parser.parse_args()
     args.gpt_load_ckpt = None
@@ -32,6 +35,7 @@ if __name__ == '__main__':
     mask_token = 1024
     sos_token = 1025
     batch_size = 2
+    non_mask_confidence = 1e9
     # args.verbose = True
     def getMask(seq, mode):
         ratio = np.random.uniform()
@@ -94,11 +98,80 @@ if __name__ == '__main__':
     print(sequence.device)
     print('VQ_VAE OUTPUT SEQUENCE SHAPE: ',sequence.shape)
     inp_seq, tar_seq = maskSequence(sequence, label)
-    print('INPUT SEQ SHAPE: ', inp_seq.shape)
-    print('TARGET SEQ SHAPE: ', tar_seq.shape)
+    print('INPUT SEQ SHAPE: ', inp_seq[0])
+    print('TARGET SEQ SHAPE: ', tar_seq[0])
     print(f'MASKGIT CONFIGURATIONS: {maskgitconf}')
     logits = transformer(inp_seq)
     print('logits', logits.shape)
     loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), tar_seq.reshape(-1))
     print('loss: ' ,loss)
     #train_GPT = trainMaskGITTransformers(args, gptconf, run_vqvae=False)
+
+
+    print('--- GENERATION ---')
+    def maskByConfidence(probs, mask_len, temperature=1.0):
+        #The add term is just some random noise
+        confidence = torch.log(probs) + temperature * torch.distributions.gumbel.Gumbel(0, 1).sample(probs.shape).to(logits.device)
+        sorted_confidence, _ = torch.sort(confidence, dim=-1)
+        cut_off = torch.take_along_dim(sorted_confidence, mask_len.to(torch.long), dim=-1)
+        masking = (confidence < cut_off)
+        return masking
+
+    def createInputTokensNormal(batch_size, label):
+        blank_tokens = torch.ones((batch_size, 256), device=label.device)
+        masked_tokens = mask_token * blank_tokens
+        sos_tokens = torch.ones(batch_size, 1, dtype=torch.long, device=label.device) * sos_token
+
+        if label is not None:
+            label_tokens = label * torch.ones([batch_size, 1], device=label.device)
+            label_tokens = label_tokens + mask_token
+            masked_tokens = torch.cat((sos_tokens, masked_tokens), dim=1)
+            masked_tokens = torch.concat([label_tokens, masked_tokens], dim=-1)
+            print(masked_tokens)
+        else:
+            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
+        
+        return masked_tokens.to(torch.int32)
+
+    def generateTokens(idx=None, label=None):
+
+        #Getting inputs
+        if idx is None:
+            inputs = createInputTokensNormal(batch_size, label)
+        else:
+            inputs = torch.hstack((idx, torch.zeros((inputs.shape[0], N - idx.shape[1]), device="cuda", dtype=torch.int).fill_(mask_token)))
+            sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * sos_token
+            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
+
+        unknown_tokens_0 = torch.sum(inputs == mask_token, dim=-1)
+        current_tokens = inputs
+        for it in range(5):
+            logits = transformer(inputs)
+            pred_tokens = torch.distributions.categorical.Categorical(logits=logits).sample()
+            unknown_tokens = (current_tokens == mask_token)
+            sampled_tokens = torch.where(unknown_tokens, pred_tokens, current_tokens)
+
+            r = 1. * (it + 1) / 5
+            mask_ratio = getMask(r, 'cosine')
+            
+            probs = F.softmax(logits, dim=-1)
+            selected_probs = torch.squeeze(torch.take_along_dim(probs, torch.unsqueeze(sampled_tokens, -1), -1), -1)
+
+            selected_probs = torch.where(unknown_tokens, selected_probs, non_mask_confidence)
+
+            mask_len = torch.unsqueeze(torch.floor(unknown_tokens_0 * mask_ratio), 1)  
+            mask_len = torch.maximum(torch.ones_like(mask_len), torch.minimum(torch.sum(unknown_tokens, dim=-1, keepdim=True)-1, mask_len))
+
+            #Noise for randoness
+            masking = maskByConfidence(selected_probs, mask_len, temperature=4.5*(1.0 - r))
+
+            current_tokens = torch.where(masking, mask_token, sampled_tokens)
+        
+        if label is None:
+            generated_tokens = current_tokens[:, 1:]
+        else:
+            generated_tokens = current_tokens[:, 2:]
+
+        return generated_tokens
+    gen_tokens = generateTokens(idx=None, label=label)
+    print('GENERATED TOKENS: ', gen_tokens)
