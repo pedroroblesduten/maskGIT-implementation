@@ -3,7 +3,9 @@ import torch.nn as nn
 from load_data import loadData
 from encoder_decoder import Encoder, Decoder
 from codebook import CodebookEMA
-
+import argparse
+import os
+from tqdm import tqdm
 
 class VQVAE(nn.Module):
     def __init__(self, args):
@@ -51,28 +53,37 @@ class vqvaeTraining():
     def __init__(self, args, verbose=False):
 
         self.verbose = verbose
-        self.save_ckpt = args.vqvae_save_ckpt
-        self.mri_vqvae = VQVAE(args)
-        self.create_ckpt(self.save_ckpt)
+        self.save_ckpt = args.save_ckpt
+        self.save_losses = args.save_losses
+        
+        self.vqvae = VQVAE(args)
+        self.loader = loadData(args)
+
+        self.create_ckpt(self.save_ckpt, self.save_losses)
         self.train(args)        
 
     @staticmethod
-    def create_ckpt(ckpt_path):
+    def create_ckpt(ckpt_path, losses_path):
         if not os.path.exists(ckpt_path):
             os.makedirs(ckpt_path)
+        if not os.path.exists(losses_path):
+            os.makedirs(losses_path)
 
-    def train(self, args, verbose=False):
-        train_dataset , val_dataset, _ = loadData(args)
+
+    def train(self, args):
+
+        train_dataset, val_dataset = self.loader.getDataloader()
 
         iterations_per_epoch = len(train_dataset)
+        learning_rate = 3e-4
         criterion = torch.nn.MSELoss()
-        opt_vq = optim.Adam(
-            list(self.mri_vqvae.encoder.parameters())+
-            list(self.mri_vqvae.decoder.parameters())+
-            list(self.mri_vqvae.codebook.parameters())+
-            list(self.mri_vqvae.quant_conv.parameters())+
-            list(self.mri_vqvae.post_quant_conv.parameters()),
-            lr=args.learning_rate,eps=1e-8, betas=(args.beta1, args.beta2))
+        opt_vq = torch.optim.Adam(
+            list(self.vqvae.encoder.parameters())+
+            list(self.vqvae.decoder.parameters())+
+            list(self.vqvae.codebook.parameters())+
+            list(self.vqvae.quant_conv.parameters())+
+            list(self.vqvae.post_quant_conv.parameters()),
+            lr=learning_rate,eps=1e-8, betas=(args.beta1, args.beta2))
 
         print('--> STARTING VQVAE <--')
 
@@ -86,10 +97,10 @@ class vqvaeTraining():
             epoch_train_losses = []
             epoch_val_losses = []            
 
-            self.mri_vqvae.train()
-            for imgs in tqdm(train_dataset):                    
+            self.vqvae.train()
+            for imgs, _ in tqdm(train_dataset):                    
                 imgs = imgs.to(device=args.device)
-                decoded_images, min_indices, q_loss = self.mri_vqvae(imgs)
+                decoded_images, min_indices, q_loss = self.vqvae(imgs)
 
                 rec_loss = criterion(imgs, decoded_images)
                 vq_loss = rec_loss + q_loss
@@ -99,10 +110,10 @@ class vqvaeTraining():
                 opt_vq.step()
                 epoch_train_losses.append(vq_loss.cpu().detach().numpy())                        
 
-            self.mri_vqvae.eval()
-            for val_imgs in val_dataset:
+            self.vqvae.eval()
+            for val_imgs, _ in val_dataset:
                 imgs = imgs.to(device=args.device)
-                decoded_images, min_indices, q_loss = self.mri_vqvae(imgs)
+                decoded_images, min_indices, q_loss = self.vqvae(imgs)
     
                 rec_loss = criterion(imgs, decoded_images)
                 vq_loss = rec_loss + q_loss
@@ -115,7 +126,7 @@ class vqvaeTraining():
             #Early Stopping
             if val_loss <  best_val_loss:
                 best_val_loss = val_loss
-                torch.save(self.mri_vqvae.state_dict(), os.path.join(args.vqvae_save_ckpt, 'mri_vqvae_bestVal.pt'))
+                torch.save(self.mri_vqvae.state_dict(), os.path.join(self.save_ckpt, 'mri_vqvae_bestVal.pt'))
             else:
                 patience_counter += 1
 
@@ -123,10 +134,11 @@ class vqvaeTraining():
             #    break
 
             if epoch % 10 == 0:
-                np.save(os.path.join(args.save_loss, 'VQVAE_train_loss.npy'), all_train_loss)
-                np.save(os.path.join(args.save_loss, 'VQVAE_val_loss.npy'), all_val_loss)
-                torch.save(self.mri_vqvae.state_dict(), os.path.join(args.vqvae_save_ckpt, f'mri_vqvae_epoch_{epoch}.pt'))
-        torch.save(self.mri_vqvae.state_dict(), os.path.join(args.save_ckpt, 'mri_vqvae_lastEpoch.pt'))
+                np.save(os.path.join(self.save_losses, 'VQVAE_train_loss.npy'), all_train_loss)
+                np.save(os.path.join(self.save_losses, 'VQVAE_val_loss.npy'), all_val_loss)
+            if epoch % 50 == 0:
+                torch.save(self.mri_vqvae.state_dict(), os.path.join(self.save_ckpt, f'mri_vqvae_epoch_{epoch}.pt'))
+        torch.save(self.mri_vqvae.state_dict(), os.path.join(self.save_ckpt, 'mri_vqvae_lastEpoch.pt'))
 
 
 if __name__ == '__main__': 
@@ -135,16 +147,30 @@ if __name__ == '__main__':
     #VQ_VAE ARGS
     parser.add_argument('--latent-dim', type=int, default=256)
     parser.add_argument('--num_res_blocks', type=int, default=2)
-    parser.add_argument('--verbose', type=str, default=True)
+    parser.add_argument('--verbose', type=str, default=False)
     parser.add_argument('--num_codebook_vectors', type=int, default=1024)
     parser.add_argument('--beta', type=float, default=0.25)
+    parser.add_argument('--use_ema', type=bool, default=True)
+    parser.add_argument('--learning-rate', type=float, default=2.25e-05)
+    parser.add_argument('--beta1', type=float, default=0.5)
+    parser.add_argument('--beta2', type=float, default=0.9)
+    
+    #DATASET ARGS
+    parser.add_argument('--dataset', type=str, default='ImageNet')
+    parser.add_argument('--imagenetPath', type=str, default='/scratch2/pedroroblesduten/classical_datasets/imagenet')
+    parser.add_argument('--imagenetTxtPath', type=str, default='/scratch2/pedroroblesduten/classical_datasets/imagenet/txt_files')
 
     #TRAINING ARGS
-    parser.add_argument('--epochs', type=int, default=1024)
+    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--device', type=str, default='cuda')
+    parser.add_argument('--patience', type=int, default=10)
 
     #PATH ARGS
     parser.add_argument('--save_ckpt', type=str, default='/scratch2/pedroroblesduten/MASKGIT/ckpt')
-    parser.add_argument('--save_loss', type=str, default='/scratch2/pedroroblesduten/MASKGIT/losses')
+    parser.add_argument('--save_losses', type=str, default='/scratch2/pedroroblesduten/MASKGIT/losses')
     
     args = parser.parse_args()
+
+    trainvqvae = vqvaeTraining(args)
 

@@ -154,7 +154,6 @@ class Decoder(nn.Module):
     def forward(self, x):
         x = self.conv_in(x)
         x = self.res_blocks(x)
-        print(x.shape)
         for layer in self.layers:
             x = layer(x)
         x = self.group_norm(x)
