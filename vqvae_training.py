@@ -162,7 +162,7 @@ if __name__ == '__main__':
     #VQ_VAE ARGS
     parser.add_argument('--latent-dim', type=int, default=256)
     parser.add_argument('--num_res_blocks', type=int, default=4)
-    parser.add_argument('--verbose', type=bool, default=True)
+    parser.add_argument('--verbose', type=bool, default=False)
     parser.add_argument('--num_codebook_vectors', type=int, default=256)
     parser.add_argument('--beta', type=float, default=0.25)
     parser.add_argument('--use_ema', type=bool, default=True)
@@ -178,7 +178,7 @@ if __name__ == '__main__':
 
     #TRAINING ARGS
     parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--patience', type=int, default=10)
 

@@ -91,7 +91,7 @@ class Encoder(nn.Module):
             for _ in range(args.num_res_blocks):
                 self.layers_1.append(ResidualBlock(in_channel, out_channel))
                 in_channel = out_channel
-            if i < (self.num_blocks - 1):
+            if i < (self.num_blocks - 2):
                 self.layers_1.append(nn.Conv2d(out_channel, out_channel, 4, 2, 1))
 
         self.layers_2 = ResidualStack(in_channel, in_channel, args.num_res_blocks)
@@ -140,7 +140,7 @@ class Decoder(nn.Module):
             for _ in range(args.num_res_blocks):
                 self.layers.append(ResidualBlock(in_channel, out_channel))
                 in_channel = out_channel
-            if i > 0:
+            if i > 1:
                 self.layers.append(upSample(in_channel))
         self.group_norm = nn.GroupNorm(num_groups=32,
                                        num_channels=in_channel,
