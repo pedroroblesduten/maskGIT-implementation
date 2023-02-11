@@ -5,9 +5,9 @@ from scipy.cluster.vq import kmeans2
 
 # Follows: https://colab.research.google.com/github/zalandoresearch/pytorch-vq-vae/blob/master/vq-vae.ipynb#scrollTo=fWmjFfa8U5NI
 class CodebookEMA(nn.Module):
-    def __init__(self, args, verbose=False):
+    def __init__(self, args):
         super().__init__()
-        self.verbose = verbose
+        self.verbose = args.verbose
         #Initialization of the codeebooks
         self.num_codebook_vectors = args.num_codebook_vectors
         self.latent_dim = args.latent_dim
