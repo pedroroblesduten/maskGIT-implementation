@@ -78,12 +78,13 @@ class Encoder(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.verbose = args.verbose
-        self.mult_ch = [1, 1, 2, 2, 4]
+        self.mult_ch = [1, 1, 2, 2]
         self.num_blocks= len(self.mult_ch)
         self.conv_1 = nn.Conv2d(3, 128,
-                      kernel_size=3,
-                      stride=1,
-                      padding=1)
+                                kernel_size=3,
+                                stride=1,
+                                padding=1)
+
         self.layers_1 = nn.ModuleList()
         in_channel = 128
         for i in range(self.num_blocks):
@@ -91,7 +92,7 @@ class Encoder(nn.Module):
             for _ in range(args.num_res_blocks):
                 self.layers_1.append(ResidualBlock(in_channel, out_channel))
                 in_channel = out_channel
-            if i < (self.num_blocks - 1):
+            if i < (self.num_blocks - 2):
                 self.layers_1.append(nn.Conv2d(out_channel, out_channel, 4, 2, 1))
 
         self.layers_2 = ResidualStack(in_channel, in_channel, args.num_res_blocks)
@@ -125,7 +126,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.mult_ch = [1, 1, 2, 2, 4]
+        self.mult_ch = [1, 1, 2, 2]
         self.num_blocks = len(self.mult_ch)
 
         self.conv_in = nn.Conv2d(args.latent_dim, 512,
@@ -140,7 +141,7 @@ class Decoder(nn.Module):
             for _ in range(args.num_res_blocks):
                 self.layers.append(ResidualBlock(in_channel, out_channel))
                 in_channel = out_channel
-            if i > 0:
+            if i > 1:
                 self.layers.append(upSample(in_channel))
         self.group_norm = nn.GroupNorm(num_groups=32,
                                        num_channels=in_channel,

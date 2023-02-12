@@ -24,6 +24,8 @@ class generateImages:
         self.config = config
         self.transformer, self.vq_vae = self.getModels(args, config)
         self.codebook = self.vq_vae.codebook.embedding.weight.data
+        self.loader = loadData(args)
+                                        
 
         self.non_mask_confidence = float('inf')
         self.latent_dim = args.latent_dim
@@ -38,8 +40,6 @@ class generateImages:
         self.gen_iter = args.gen_iter
         self.batch_size = args.batch_size
 
-        self.transformer, self.vq_vaq = self.getModels(args, config)
-        
         self.create_ckpt(args.save_results_path)
        
     def getModels(self, args, config):
@@ -49,6 +49,8 @@ class generateImages:
             path  = args.gpt_load_ckpt.split('ckpt/')[-1]
             print(f' -> LOADING GPT MODEL: {path}')
             transf.load_state_dict(torch.load(args.gpt_load_ckpt, map_location=args.device), strict=False)
+        else:
+            print(f' -> LOADING TRANSFORMER MODEL: no checkpoint, intializing random')
                 
         # LOADING VQ-VAE
         vq_vae = VQVAE(args).to(args.device)
@@ -170,15 +172,19 @@ class generateImages:
 
     def getReconstructionVQVAE(self, args):
         _, val_dataset = self.loader.getDataloader()
-
-        self.vqvae.eval()
+        print('-> GENERATING RESULTS FOR VQVAE <-')
+        num_gen = 10
+        i = 0
+        self.vq_vae.eval()
         for imgs, _ in val_dataset:
             imgs = imgs.to(args.device)
-            decoded_images, indices, loss = self.vqvae(args)
+            decoded_images, indices, loss = self.vq_vae(imgs)
 
             real_fake_images = torch.cat((imgs[:4], decoded_images.add(1).mul(0.5)[:4]))
-            vutils.save_image(real_fake_images, os.path.join(args.save_results_path, 'results_vqvae.jpg'), nrow=4)
-            break
+            vutils.save_image(real_fake_images, os.path.join(args.save_results_path, f'results_vqvae_{i}.jpg'), nrow=4)
+            i+=1
+            if i == num_gen:
+                break
 
 
 if __name__ == '__main__': 
@@ -186,37 +192,40 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #VQ_VAE ARGS
-    parser.latent = 256
-    parser.num_res_blocks = 4
-    parser.verbose = False
-    parser.num_codebook_vectors = 256
-    parser.beta = 0.25
-    parser.use_ema = True
-    parser.earning-rate = 2.25e-05
-    parser.beta1 = 0.5
-    parser.beta2 = 0.9
+    args.latent_dim = int(256)
+    args.num_res_blocks = int(4)
+    args.verbose = False
+    args.num_codebook_vectors = int(256)
+    args.beta = 0.25
+    args.use_ema = True
+    args.learning_rate = 2.25e-05
+    args.beta1 = 0.5
+    args.beta2 = 0.9
     
     #DATASET ARGS
-    parser.dataset = 'CIFAR10'
-    parser.imagenetPath = '/scratch2/pedroroblesduten/classical_datasets/imagenet'
-    parser.imagenetTxtPath = '/scratch2/pedroroblesduten/classical_datasets/imagenet/txt_files'
-    parser.cifar10Path = '/scratch2/pedroroblesduten/classical_datasets/cifar10'
+    args.dataset = 'CIFAR10'
+    args.imagenetPath = '/scratch2/pedroroblesduten/classical_datasets/imagenet'
+    args.imagenetTxtPath = '/scratch2/pedroroblesduten/classical_datasets/imagenet/txt_files'
+    args.cifar10Path = '/scratch2/pedroroblesduten/classical_datasets/cifar10'
 
     #TRAINING ARGS
-    parser.epochs = 200
-    parser.batch_size = 32
-    parser.device= 'cuda'
-    parser.patience = 10
+    args.epochs = 200
+    args.batch_size = 32
+    args.device= 'cuda'
+    args.patience = 10
 
     #PATH ARGS
-    parser.save_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt'
-    parser.save_losses = '/scratch2/pedroroblesduten/MASKGIT/losses'
-    parser.vqvae_load_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt/vqvae_bestVal_CIFAR10.pt'
-    parser.gpt_load_ckpt = None
-    parser.save_results_path = '/scratch2/pedroroblesduten/MASKGIT/results/'
-
+    args.save_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt'
+    args.save_losses = '/scratch2/pedroroblesduten/MASKGIT/losses'
+    args.vqvae_load_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt/vqvae_bestVal_CIFAR10.pt'
+    args.gpt_load_ckpt = None
+    args.save_results_path = '/scratch2/pedroroblesduten/MASKGIT/results/'
     
-    args = parser.parse_args()
+    #TRANSFORMERS ARGS
+    args.mask_token = 1025
+    args.sos_token = 1024
+    args.gen_iter = 8
+
 
     transformerConfig = MaskGITconfig(block_size = 257,
                                       vocab_size = 1026,
