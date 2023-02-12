@@ -10,7 +10,7 @@ from my_minGPT import GPT, GPTconfig
 from maskgit_transformer import MaskGITTransformer, MaskGITconfig
 import argparse
 import math
-
+from args_parameters import getArgs, getConfig
 #Training for GPT follows: https://github.com/karpathy/nanoGPT/blob/master/train.py
 
 class trainTransformers:
@@ -204,61 +204,9 @@ class trainTransformers:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="GPT_TRAINING")
 
-    # VQVAE ARGS
-    parser.add_argument('--latent-dim', type=int, default=256)
-    parser.add_argument('--num-codebook-vectors', type=int, default=1024)
-    parser.add_argument('--beta', type=float, default=0.25)
-    parser.add_argument('--image-channels', type=int, default=1)
-    parser.add_argument('--flat_ordering', type=str, default=None)
-    parser.add_argument('--use_ema', type=str, default=True)
+    arg = getArgs()
+    confi = getConfig()
 
+    trainTransformers(arg, confi)
 
-    # GENERAL TRAINING ARGS
-    parser.add_argument('--device', type=str, default="cuda")
-    parser.add_argument('--batch-size', type=int, default=8)
-    parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--learning-rate', type=float, default=2.25e-05)
-    parser.add_argument('--beta1', type=float, default=0.5)
-    parser.add_argument('--beta2', type=float, default=0.9)
-    parser.add_argument('--verbose', type=str, default=False)
-    parser.add_argument('--img_sets', type=str, default=['train_set', 'validation_set', 'test_set'])
-
-    #LOAD AND SAVE ARGS:
-    parser.add_argument('--save_mode', type=str, default='training')
-    parser.add_argument('--run_from_pre_trained', type=bool, default=True)
-
-    # PATH ARGS
-    parser.add_argument('--save_mri_path', type=str, default='./generated_images')
-    parser.add_argument('--train_csv_path', type=str, default='/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly_detection/vq_vae_3d/norep_treino_3_classes_onehot.csv')
-    parser.add_argument('--validation_csv_path', type=str, default='/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly_detection/vq_vae_3d/norep_validacao_3_classes_onehot.csv')
-    parser.add_argument('--test_csv_path', type=str, default='/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly_detection/vq_vae_3d/norep_teste_3_classes_onehot.csv')
-    parser.add_argument('--dataset_path', type=str, default='/scratch2/turirezende/BRAIN_COVID/data/ADNI/images')
-    parser.add_argument('--gpt_save_ckpt', type=str, default="/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly_detection/vq_vae_3d/ckpt/")
-    parser.add_argument('--gpt_load_ckpt', type=str, default='/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly/detection/vq_vae_3d/ckpt/')
-    parser.add_argument('--index_path', type=str, default='/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly_detection/vq_vae_3d/save_index')
-    parser.add_argument('--vqvae_load_ckpt', type=str, default='/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly_detection/vq_vae_3d/ckpt/mri_vqvae_bestVal.pt')
-    parser.add_argument('--save_loss', type=str, default='/scratch2/pedroroblesduten/BRAIN_COVID/brain_anomaly_detection/vq_vae_3d/losses/')
-    # GPT ARGS
-    parser.add_argument('--gpt_batch_size', type=str, default=2)
-    parser.add_argument('--gpt_epochs', type=str, default=500)
-    parser.add_argument('--patience', type=int, default=10)
-
-
-    args = parser.parse_args()
-    args.gpt_load_ckpt = None
-    # args.verbose = True
-    
-    # TRANSFORMER ARCHITECURE CONFIG PARAMETERS
-    transformerConfig = MaskGITconfig(block_size = 257,
-                                      vocab_size = 1026,
-                                      n_layers = 10,
-                                      n_heads = 8,
-                                      embedding_dim = 768,
-                                      dropout = 0.
-                                      )
-
-
-    print(f'GPT CONFIGURATIONS: {transformerConfig}')
-    train_GPT = trainTransformers(args, transformerConfig)
