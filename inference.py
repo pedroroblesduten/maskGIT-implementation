@@ -1,15 +1,17 @@
-import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from load_data import loadIndex
-from run_vqvae import runVQVAE
+from load_data import loadData
+from encoder_decoder import Encoder, Decoder
+from codebook import CodebookEMA
+import argparse
+import os
 from tqdm import tqdm
-from my_minGPT import GPT, GPTconfig
-from maskgit_transformer import MaskGITTransformer, MaskGITconfig
+import numpy as np
+from PIL import Image
+from vqvae_training import VQVAE
 import argparse
 import math
+from torchvision import utils as vutils
 
 # Non-autoregressive generation
 # Follows the original JAX implementation from Google Research: https://github.com/google-research/maskgit/blob/main/maskgit/libml/parallel_decode.py
@@ -48,7 +50,7 @@ class generateImages:
             transf.load_state_dict(torch.load(args.gpt_load_ckpt, map_location=args.device), strict=False)
                 
         # LOADING VQ-VAE
-        vq_vae = MRI_VQVAE(args).to(args.device)
+        vq_vae = VQVAE(args).to(args.device)
         if args.vqvae_load_ckpt is not None:
             path = args.vqvae_load_ckpt.split('ckpt/')[-1]
             print(f' -> LOADING VQ-VAE MODEL: {path}')
@@ -164,4 +166,18 @@ class generateImages:
     def decoderTokens(self, seq):
         img = self.vq_vae.decode(seq)
         return img
+
+    def getReconstructionVQVAE(self, args):
+        _, val_dataset = self.loader.getDataloader()
+
+        self.vqvae.eval()
+        for imgs, _ in val_dataset:
+            imgs = imgs.to(args.device)
+            decoded_images, indices, loss = self.vqvae(args)
+
+            real_fake_images = torch.cat((imgs[:4], decoded_images.add(1).mul(0.5)[:4]))
+            vutils.save_image(real_fake_images, 'results_vqvae.jpg', nrow=4)
+            break
+
+
         
