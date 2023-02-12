@@ -12,6 +12,7 @@ from vqvae_training import VQVAE
 import argparse
 import math
 from torchvision import utils as vutils
+from maskgit_transformer import MaskGITconfig, MaskGITTransformer
 
 # Non-autoregressive generation
 # Follows the original JAX implementation from Google Research: https://github.com/google-research/maskgit/blob/main/maskgit/libml/parallel_decode.py
@@ -43,7 +44,7 @@ class generateImages:
        
     def getModels(self, args, config):
         # LOADING GPT
-        transf = GPT(config).to(args.device)
+        transf = MaskGITTransformer(config).to(args.device)
         if args.gpt_load_ckpt is not None:
             path  = args.gpt_load_ckpt.split('ckpt/')[-1]
             print(f' -> LOADING GPT MODEL: {path}')
@@ -217,5 +218,15 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
 
-    plotresults = vqvaeTraining(args)
+    transformerConfig = MaskGITconfig(block_size = 257,
+                                      vocab_size = 1026,
+                                      n_layers = 10,
+                                      n_heads = 8,
+                                      embedding_dim = 768,
+                                      dropout = 0.
+                                      )
+
+
+
+    generateImages(args, transformerConfig).getReconstructionVQVAE(args)
         
