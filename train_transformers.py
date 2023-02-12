@@ -3,10 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from load_data import loadIndex
-from run_vqvae import runVQVAE
 from tqdm import tqdm
-from my_minGPT import GPT, GPTconfig
+from vqvae_training import VQVAE
+from load_data import loadData
 from maskgit_transformer import MaskGITTransformer, MaskGITconfig
 import argparse
 import math
@@ -17,46 +16,49 @@ class trainTransformers:
     def __init__(self, args, config):
 
         self.config = config
-        self.transformer, self.vq_vae = self.getModels(args, config)
+        self.vq_vae = self.getModels(args, config)
         self.codebook = self.vq_vae.codebook.embedding.weight.data
+        self.loader = loadData(args)
 
         self.sos_token = args.sos_token
         self.mask_token = args.mask_token
 
-        self.create_ckpt(args.gpt_save_ckpt)
-        self.train(args, config, run_vqvae)
+        self.create_ckpt(args.save_ckpt)
+        self.train(args, config)
+        print('____________________________________')
+        print('|                                  |')
+        print('|    WELCOME TO MASKGIT TRAINING   |')
+        print('|                                  |')
+        print('____________________________________')
 
     def getModels(self, args, config):
         # LOADING GPT
-        transf = GPT(config).to(args.device)
+        transf = MaskGITTransformer(config).to(args.device)
         if args.gpt_load_ckpt is not None:
             path  = args.gpt_load_ckpt.split('ckpt/')[-1]
-            print(f' -> LOADING GPT MODEL: {path}')
+            print(f' -> LOADING TRANSFORMERS MODEL: {path}')
             transf.load_state_dict(torch.load(args.gpt_load_ckpt, map_location=args.device), strict=False)
+        else:
+            print(' -> LOADING TRANSFORMERS: no checkpoint, initalizing the model randomly')
                 
         # LOADING VQ-VAE
-        vq_vae = MRI_VQVAE(args).to(args.device)
+        vq_vae = VQVAE(args).to(args.device)
         if args.vqvae_load_ckpt is not None:
             path = args.vqvae_load_ckpt.split('ckpt/')[-1]
             print(f' -> LOADING VQ-VAE MODEL: {path}')
             vq_vae.load_state_dict(torch.load(args.vqvae_load_ckpt, map_location=args.device), strict=False)
 
-        return transf, vq_vae
+        return vq_vae
 
     @staticmethod
     def create_ckpt(ckpt_path):
-        if not os.path.exists(ckpt_path):
+        if not os.path.exists(ckpt_path):            
             os.makedirs(ckpt_path)
 
-    def train(self, args, config, run_vqvae):
+    def train(self, args, config):
 
-        train_images = load_data
-        val_images = load_data
+        train_dataset, val_dataset = self.loader.getDataloader()
 
-
-        model = MaskGITTransformer(self.config)
-
-        model.to(args.device)
 
         opt_dict = dict(
             learning_rate = 6e-4,
@@ -184,7 +186,7 @@ class trainTransformers:
             #Early Stop
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                torch.save(model.state_dict(), os.path.join(args.gpt_save_ckpt, 'scale_GPT_bestVAL.pt'))
+                torch.save(model.state_dict(), os.path.join(args.save_ckpt, 'MASKGIT_bestVAL.pt'))
 
             else:
                 patience_counter += 1
@@ -196,9 +198,10 @@ class trainTransformers:
             all_val_loss.append(val_loss)
 
             if epoch % 10 == 0:
-                np.save(os.path.join(args.save_loss, 'scale_GPT_train_loss.npy'), all_train_loss)
-                np.save(os.path.join(args.save_loss, 'scale_GPT_val_loss.npy'), all_val_loss)
-                torch.save(model.state_dict(), os.path.join(args.gpt_save_ckpt, f'scale_GPT_lastEpoch_{epoch}.pt'))
+                np.save(os.path.join(args.save_losses, 'MASKGIT_train_loss.npy'), all_train_loss)
+                np.save(os.path.join(args.save_losses, 'MASKGIT_val_loss.npy'), all_val_loss)
+            if epoch % 50 == 0:
+                torch.save(model.state_dict(), os.path.join(args.save_ckpt, f'MASKGIT_lastEpoch_{epoch}.pt'))
        
         print('--- FINISHED MASKGIT TRANSFORMER TRAINING ---')
 

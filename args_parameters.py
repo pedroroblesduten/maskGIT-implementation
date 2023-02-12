@@ -42,7 +42,7 @@ def getArgs():
 
     return args
 
-getConfig():
+def getConfig():
     transformerConfig = MaskGITconfig(block_size = 257,
                                       vocab_size = 1026,
                                       n_layers = 10,
