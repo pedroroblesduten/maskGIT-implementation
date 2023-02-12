@@ -25,11 +25,6 @@ class trainTransformers:
 
         self.create_ckpt(args.save_ckpt)
         self.train(args, config)
-        print('____________________________________')
-        print('|                                  |')
-        print('|    WELCOME TO MASKGIT TRAINING   |')
-        print('|                                  |')
-        print('____________________________________')
 
     def getModels(self, args, config):
         # LOADING GPT
@@ -56,6 +51,12 @@ class trainTransformers:
             os.makedirs(ckpt_path)
 
     def train(self, args, config):
+
+        print('____________________________________')
+        print('|                                  |')
+        print('|    WELCOME TO MASKGIT TRAINING   |')
+        print('|                                  |')
+        print('____________________________________')
 
         train_dataset, val_dataset = self.loader.getDataloader()
 
