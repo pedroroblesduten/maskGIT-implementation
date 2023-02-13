@@ -9,24 +9,28 @@ from load_data import loadData
 from maskgit_transformer import MaskGITTransformer, MaskGITconfig
 import argparse
 import math
+from utils import getMask
 from args_parameters import getArgs, getConfig
 #Training for GPT follows: https://github.com/karpathy/nanoGPT/blob/master/train.py
 
 class trainTransformers:
     def __init__(self, args, config):
+        
 
         self.config = config
-        self.vq_vae = self.getModels(args, config)
+        self.transformer, self.vq_vae = self.getModels(args, config)
         self.codebook = self.vq_vae.codebook.embedding.weight.data
         self.loader = loadData(args)
 
         self.sos_token = args.sos_token
         self.mask_token = args.mask_token
+        self.batch_size = args.batch_size
 
         self.create_ckpt(args.save_ckpt)
         self.train(args, config)
 
     def getModels(self, args, config):
+        print('*preparing for training*')
         # LOADING GPT
         transf = MaskGITTransformer(config).to(args.device)
         if args.gpt_load_ckpt is not None:
@@ -43,7 +47,7 @@ class trainTransformers:
             print(f' -> LOADING VQ-VAE MODEL: {path}')
             vq_vae.load_state_dict(torch.load(args.vqvae_load_ckpt, map_location=args.device), strict=False)
 
-        return vq_vae
+        return transf, vq_vae
 
     @staticmethod
     def create_ckpt(ckpt_path):
@@ -67,9 +71,9 @@ class trainTransformers:
             betas = (0.9,0.95)
         )
 
-        optimizer = model.configure_optimizers(opt_dict['weight_decay'],
-                                               opt_dict['learning_rate'],
-                                               opt_dict['betas'])
+        optimizer = self.transformer.configure_optimizers(opt_dict['weight_decay'],
+                                                          opt_dict['learning_rate'],
+                                                          opt_dict['betas'])
         def get_lr(iter):
             # 1) linear warmup for warmup_iters steps
             if iter < warmup_iters:
@@ -83,11 +87,12 @@ class trainTransformers:
             coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
             return min_lr + coeff * (learning_rate - min_lr)
 
-        def maskSequence(seq, label=None):
+        def maskSequence(seq, label, imgs):
+            batch_size = imgs.shape[0]
             #TODO: available training for no label data in the same model
-            z_indices = seq.view(x.shape[0], -1)
+            z_indices = seq.view(batch_size, -1)
 
-            sos_tokens = torch.ones(x.shape[0], 1, dtype=torch.long, device=z_indices.device) * self.sos_token
+            sos_tokens = torch.full((batch_size, 1), self.sos_token, device=z_indices.device)
 
             r = math.floor(getMask(np.random.uniform(), 'cosine') * z_indices.shape[1])
             sample = torch.rand(z_indices.shape, device=z_indices.device).topk(r, dim=1).indices
@@ -97,25 +102,24 @@ class trainTransformers:
             masked_indices = self.mask_token * torch.ones_like(z_indices, device=z_indices.device)
             masked_indices = mask * z_indices + (~mask) * masked_indices
 
-
-            masked_indices = torch.cat((sos_tokens, a_indices), dim=1)
+            masked_indices = torch.cat((sos_tokens, masked_indices), dim=1)
             target = torch.cat((sos_tokens, z_indices), dim=1)
-
+            
             if label is not None:
-                label_tokens = label * torch.ones([batch_size, 1])
-                label_tokens = label_tokens + self.mask_token
-                input_tokens = torch.concat([label_tokens, masked_indices], dim=-1)
-                target_tokens = torch.concat([label_tokens, target], dim=-1)
-
+                label_tokens = label + self.sos_token + 1
+                label_tokens = label_tokens.unsqueeze(1)
+                input_tokens = torch.cat((label_tokens, masked_indices), dim=1)
+                target_tokens = torch.cat((label_tokens, target), dim=1)
+                
             return input_tokens.long(), target_tokens.long()
 
 
         # -- TRAINING LOOP PARAMETERS -- 
 
-        decay_lr = False
-        max_iters = len(X_train_index)*args.gpt_epochs
-        warmup_iters = len(X_train_index)*5
-        lr_decay_iters = len(X_train_index)*args.gpt_epochsa
+        decay_lr = True
+        max_iters = len(train_dataset)*args.transformer_epochs
+        warmup_iters = len(train_dataset)*5
+        lr_decay_iters = len(train_dataset)*args.transformer_epochs
         learning_rate = 6e-4 # max learning rate
         min_lr = 6e-5
 
@@ -138,12 +142,13 @@ class trainTransformers:
         all_train_loss = []
         all_val_loss = []
 
-        for epoch in range(args.gpt_epochs):
+        self.vq_vae.eval()
+        for epoch in range(args.transformer_epochs):
             epoch_val_losses = []
             epoch_train_losses = []
 
-            model.train()
-            for imgs in tqdm(train_images):
+            self.transformer.train()
+            for imgs, label in tqdm(train_dataset):
 
                 if decay_lr:
                     lr = get_lr(iter_num)
@@ -153,11 +158,11 @@ class trainTransformers:
                     lr = learning_rate
                    
                 #RUNNING VQ_VAE 
-                imgs = imgs.to(args.device)
-                _, indices = self.vq_vae.encode(x)
+                imgs, label = imgs.to(args.device), label.to(args.device)
+                _, indices = self.vq_vae.encode(imgs)
                 
                 #MASKING SEQUENCE FOR TRANSFORMER TRAINING
-                masked_indices, target = maskSequence(indices)
+                masked_indices, target = maskSequence(indices, label, imgs)
 
                 #RUNNING TRANSFORMER
                 logits = self.transformer(masked_indices)
@@ -172,11 +177,11 @@ class trainTransformers:
                 epoch_train_losses.append(loss.detach().cpu().numpy())
                     
                     
-            model.eval()
-            for val_batch in X_val_index:                
-                imgs = imgs.to(args.device)
-                _, indices = self.vq_vae.encode(x)                
-                masked_indices, target = maskSequence(indices)
+            self.transformer.eval()
+            for imgs, label in val_dataset:                
+                imgs, label = imgs.to(args.device), label.to(args.device)
+                _, indices = self.vq_vae.encode(imgs)                
+                masked_indices, target = maskSequence(indices, label, imgs)
                 logits = self.transformer(masked_indices)
                 optimizer.zero_grad(set_to_none=True)
                 loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))          
@@ -211,6 +216,8 @@ if __name__ == '__main__':
 
     arg = getArgs()
     confi = getConfig()
+    
+    print('Transformer configurations: ', confi)
 
     trainTransformers(arg, confi)
 

@@ -1,8 +1,7 @@
-import torch
+import numpy as np
 
 def getMask(seq, mode):
     ratio = np.random.uniform()
-    print(ratio)
     if mode == "linear":
         return 1 - ratio
     elif mode == "cosine":

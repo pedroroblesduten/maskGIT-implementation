@@ -2,6 +2,7 @@ import argparse
 from maskgit_transformer import MaskGITconfig
 
 def getArgs():
+    num_code_vectors = 256
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
 
@@ -24,7 +25,7 @@ def getArgs():
 
     #TRAINING ARGS
     args.epochs = 200
-    args.batch_size = 32
+    args.batch_size = 65
     args.device= 'cuda'
     args.patience = 10
 
@@ -36,17 +37,18 @@ def getArgs():
     args.save_results_path = '/scratch2/pedroroblesduten/MASKGIT/results/'
     
     #TRANSFORMERS ARGS
-    args.mask_token = 1025
-    args.sos_token = 1024
+    args.mask_token = 256
+    args.sos_token = 256+1
     args.gen_iter = 8
+    args.transformer_epochs = 300
 
     return args
 
 def getConfig():
-    transformerConfig = MaskGITconfig(block_size = 257,
-                                      vocab_size = 1026,
-                                      n_layers = 10,
-                                      n_heads = 8,
+    transformerConfig = MaskGITconfig(block_size = 66,
+                                      vocab_size = 268,
+                                      n_layers = 16,
+                                      n_heads = 12,
                                       embedding_dim = 768,
                                       dropout = 0.
                                       )
