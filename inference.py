@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from load_data import loadData
 from encoder_decoder import Encoder, Decoder
 from codebook import CodebookEMA
@@ -13,6 +14,8 @@ import argparse
 import math
 from torchvision import utils as vutils
 from maskgit_transformer import MaskGITconfig, MaskGITTransformer
+from args_parameters import getArgs, getConfig
+from utils import getMask
 
 # Non-autoregressive generation
 # Follows the original JAX implementation from Google Research: https://github.com/google-research/maskgit/blob/main/maskgit/libml/parallel_decode.py
@@ -28,7 +31,7 @@ class generateImages:
                                         
 
         self.non_mask_confidence = float('inf')
-        self.latent_dim = args.latent_dim
+        self.block_size = 64
         self.device = args.device
 
         self.mask_token = args.mask_token
@@ -93,52 +96,57 @@ class generateImages:
         return masking
 
     def createInputTokensNormal(self, batch_size, label):
-        blank_tokens = torch.ones((batch_size, self.latent_dim), device=self.device)
+        blank_tokens = torch.ones((batch_size, self.block_size), device=label.device)
         masked_tokens = self.mask_token * blank_tokens
-        sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * self.sos_token
+        sos_tokens = torch.full((batch_size, 1), self.sos_token, device=label.device)
+        
+        masked_tokens = torch.cat((sos_tokens, masked_tokens), dim=1)
 
         if label is not None:
-            label_tokens = label * torch.ones([batch_size, 1], device=label.device)
-            label_tokens = label_tokens + self.mask_token
-            masked_tokens = torch.cat((sos_tokens, label_tokens), dim=1)
-            masked_tokens = torch.concat([label_tokens, masked_tokens], dim=-1)
+            label_tokens = label + self.sos_token + 1
+            label_tokens = label_tokens.unsqueeze(1)
+            input_tokens = torch.cat((label_tokens, masked_tokens), dim=1)
         else:
-            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
+            input_tokens = torch.cat((sos_tokens, masked_tokens), dim=1)
         
-        return masked_tokens.to(torch.int32)
+        return input_tokens.long()
 
     def partialImageCreateInputTokens(self, idx, batch_size, label, start, end):
         #Create the input tokens passing just some part of the full sequence
-        blank_tokens = torch.ones((batch_size, self.latent_dim), device=self.device)
+        
+        idx = idx.view(batch_size, -1)
+        blank_tokens = torch.ones((batch_size, self.block_size), device=label.device)
         masked_tokens = self.mask_token * blank_tokens
-        masked_tokens[start:end] = idx[start:end]
-        sos_tokens = torch.ones(inputs.shape[0], 1, dtype=torch.long, device=inputs.device) * self.sos_token
+        masked_tokens[:, start:end] = idx[:, start:end]
+        sos_tokens = torch.full((batch_size, 1), self.sos_token, device=label.device)
 
         if label is not None:
-            label_tokens = label * torch.ones([batch_size, 1], device=label.device)
-            label_tokens = label_tokens + self.mask_token
-            masked_tokens = torch.cat((sos_tokens, label_tokens), dim=1)
-            masked_tokens = torch.concat([label_tokens, masked_tokens], dim=-1)
+            label_tokens = label + self.sos_tokens + 1
+            label_tokens = label.tokens.unsqueeze(1)
+            input_tokens = torch.cat((label_tokens, masked_tokens), dim=1)
         else:
-            inputs = torch.cat((sos_tokens, masked_tokens), dim=1)
+            input_tokens = torch.cat((sos_tokens, masked_tokens), dim=1)
         
-        return masked_tokens.to(torch.int32)
+        return input_tokens.long()
 
     def getMaskRatio(self, iteration):
         ratio = 1. * (iteration + 1) / self.gen_iter
         return ratio
 
 
-    def generateTokens(self, idx=None, label=None):
+    def generateTokens(self, label=None, idx=None, start=20, end=50):
         #Getting inputs
         if idx is None:
             inputs = self.createInputTokensNormal(self.batch_size, label)
         else:
-            inputs = self.partialImageCreateInputTokens(idx, self.batch_size, label, self.start, self.end)
-        unknown_tokens_0 = torch.sum(inputs == self.mask_token_id, dim=-1)
+            inputs = self.partialImageCreateInputTokens(idx, self.batch_size, label, start, end)
+        unknown_tokens_0 = torch.sum(inputs == self.mask_token, dim=-1)
         current_tokens = inputs
         for it in range(self.gen_iter):
-            logits = self.transformer(inputs)
+            self.transformer.eval()
+            with torch.no_grad():
+                print(inputs.shape)
+                logits = self.transformer(inputs)
             pred_tokens = torch.distributions.categorical.Categorical(logits=logits).sample()
             unknown_tokens = (current_tokens == self.mask_token)
             sampled_tokens = torch.where(unknown_tokens, pred_tokens, current_tokens)
@@ -148,6 +156,8 @@ class generateImages:
             
             probs = F.softmax(logits, dim=-1)
             selected_probs = torch.squeeze(torch.take_along_dim(probs, torch.unsqueeze(sampled_tokens, -1), -1), -1)
+            
+            unknown_tokens = unknown_tokens.float()
 
             selected_probs = torch.where(unknown_tokens, selected_probs, self.non_mask_confidence)
 
@@ -166,9 +176,29 @@ class generateImages:
 
         return generated_tokens
 
-    def decoderTokens(self, seq):
-        img = self.vq_vae.decode(seq)
-        return img
+
+    def fullGenerationProcess(self, args, imgs, label, i=0):
+        self.vq_vae.eval()
+        decoded, indices = self.vq_vae.encode(imgs)
+        generated_tokens = self.generateTokens(label)
+        generated_images = self.vq_vae.decode(generated_tokens)
+
+        real_fake_images = torch.cat((imgs[:4], generated_images.add(1).mul(0.5)[:4]))
+        vutils.save_image(real_fake_images, os.path.join(args.save_results_path, f'generated_imgs_{i}.jpg'), nrow=4)
+        i = i +1
+        return i
+
+    def generation(self, args):
+        train_dataset, val_dataset = self.loader.getDataloader()
+        print(f' -> GENERATING IMAGES FOR {args.dataset} <- ')
+        j = 0
+        with torch.no_grad():
+            for imgs, label in val_dataset:
+                imgs, label = imgs.to(args.device), label.to(args.device)
+                j = self.fullGenerationProcess(args, imgs, label, j)
+                if j == 5:
+                    break         
+
 
     def getReconstructionVQVAE(self, args):
         _, val_dataset = self.loader.getDataloader()
@@ -188,54 +218,13 @@ class generateImages:
 
 
 if __name__ == '__main__': 
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-
-    #VQ_VAE ARGS
-    args.latent_dim = int(256)
-    args.num_res_blocks = int(4)
-    args.verbose = False
-    args.num_codebook_vectors = int(256)
-    args.beta = 0.25
-    args.use_ema = True
-    args.learning_rate = 2.25e-05
-    args.beta1 = 0.5
-    args.beta2 = 0.9
     
-    #DATASET ARGS
-    args.dataset = 'CIFAR10'
-    args.imagenetPath = '/scratch2/pedroroblesduten/classical_datasets/imagenet'
-    args.imagenetTxtPath = '/scratch2/pedroroblesduten/classical_datasets/imagenet/txt_files'
-    args.cifar10Path = '/scratch2/pedroroblesduten/classical_datasets/cifar10'
+    arg = getArgs()
+    conf = getConfig()
 
-    #TRAINING ARGS
-    args.epochs = 200
-    args.batch_size = 32
-    args.device= 'cuda'
-    args.patience = 10
 
-    #PATH ARGS
-    args.save_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt'
-    args.save_losses = '/scratch2/pedroroblesduten/MASKGIT/losses'
-    args.vqvae_load_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt/vqvae_bestVal_CIFAR10.pt'
-    args.gpt_load_ckpt = None
-    args.save_results_path = '/scratch2/pedroroblesduten/MASKGIT/results/'
+    generateImages(arg, conf).generation(arg)
+
+
     
-    #TRANSFORMERS ARGS
-    args.mask_token = 1025
-    args.sos_token = 1024
-    args.gen_iter = 8
-
-
-    transformerConfig = MaskGITconfig(block_size = 257,
-                                      vocab_size = 1026,
-                                      n_layers = 10,
-                                      n_heads = 8,
-                                      embedding_dim = 768,
-                                      dropout = 0.
-                                      )
-
-
-
-    generateImages(args, transformerConfig).getReconstructionVQVAE(args)
         

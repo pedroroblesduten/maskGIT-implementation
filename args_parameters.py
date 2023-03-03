@@ -25,7 +25,7 @@ def getArgs():
 
     #TRAINING ARGS
     args.epochs = 200
-    args.batch_size = 65
+    args.batch_size = 48
     args.device= 'cuda'
     args.patience = 10
 
@@ -33,7 +33,7 @@ def getArgs():
     args.save_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt'
     args.save_losses = '/scratch2/pedroroblesduten/MASKGIT/losses'
     args.vqvae_load_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt/vqvae_bestVal_CIFAR10.pt'
-    args.gpt_load_ckpt = None
+    args.gpt_load_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt/MASKGIT_bestVAL.pt'
     args.save_results_path = '/scratch2/pedroroblesduten/MASKGIT/results/'
     
     #TRANSFORMERS ARGS

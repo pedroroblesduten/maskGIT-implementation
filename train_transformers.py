@@ -87,6 +87,8 @@ class trainTransformers:
             coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
             return min_lr + coeff * (learning_rate - min_lr)
 
+
+        # FUNCION TO MASK THE INPUT SEQUENCE
         def maskSequence(seq, label, imgs):
             batch_size = imgs.shape[0]
             #TODO: available training for no label data in the same model
@@ -156,17 +158,11 @@ class trainTransformers:
                         param_group['lr'] = lr
                 else:
                     lr = learning_rate
-                   
-                #RUNNING VQ_VAE 
+            
                 imgs, label = imgs.to(args.device), label.to(args.device)
                 _, indices = self.vq_vae.encode(imgs)
-                
-                #MASKING SEQUENCE FOR TRANSFORMER TRAINING
                 masked_indices, target = maskSequence(indices, label, imgs)
-
-                #RUNNING TRANSFORMER
                 logits = self.transformer(masked_indices)
-
                 optimizer.zero_grad(set_to_none=True)
                 loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))            
 
@@ -175,30 +171,33 @@ class trainTransformers:
                 optimizer.step()
                 iter_num += 1
                 epoch_train_losses.append(loss.detach().cpu().numpy())
+                
                     
                     
             self.transformer.eval()
             for imgs, label in val_dataset:                
                 imgs, label = imgs.to(args.device), label.to(args.device)
-                _, indices = self.vq_vae.encode(imgs)                
-                masked_indices, target = maskSequence(indices, label, imgs)
-                logits = self.transformer(masked_indices)
+                with torch.no_grad():
+                    _, indices = self.vq_vae.encode(imgs)                
+                    masked_indices, target = maskSequence(indices, label, imgs)
+                    logits = self.transformer(masked_indices)
                 optimizer.zero_grad(set_to_none=True)
                 loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))          
-                epoch_val_losses.append(loss.detach().cpu().numpy())
+                epoch_val_losses.append(loss.detach().cpu().numpy())                   
+                
 
+                
             train_loss, val_loss = np.mean(epoch_train_losses), np.mean(epoch_val_losses)
  
             #Early Stop
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                torch.save(model.state_dict(), os.path.join(args.save_ckpt, 'MASKGIT_bestVAL.pt'))
-
+                torch.save(self.transformer.state_dict(), os.path.join(args.save_ckpt, 'MASKGIT_bestVAL.pt'))
             else:
                 patience_counter += 1
 
-            # if patience_counter > patience:
-            #    break
+            if patience_counter > patience:
+                print(f'EARLY STOP: EPOCH {epoch}')
             
             all_train_loss.append(train_loss)
             all_val_loss.append(val_loss)
@@ -206,8 +205,9 @@ class trainTransformers:
             if epoch % 10 == 0:
                 np.save(os.path.join(args.save_losses, 'MASKGIT_train_loss.npy'), all_train_loss)
                 np.save(os.path.join(args.save_losses, 'MASKGIT_val_loss.npy'), all_val_loss)
+
             if epoch % 50 == 0:
-                torch.save(model.state_dict(), os.path.join(args.save_ckpt, f'MASKGIT_lastEpoch_{epoch}.pt'))
+                torch.save(self.transformer.state_dict(), os.path.join(args.save_ckpt, f'MASKGIT_lastEpoch_{epoch}.pt'))
        
         print('--- FINISHED MASKGIT TRANSFORMER TRAINING ---')
 

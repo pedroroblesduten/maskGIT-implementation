@@ -136,7 +136,7 @@ class MaskGITTransformer(nn.Module):
             x = block(x)
 
         x = self.mlmlayer(x)
-
+        
         logits = torch.matmul(x, self.tk_emb.weight.T) + self.bias
 
         return logits
