@@ -121,10 +121,11 @@ class generateImages:
         masked_tokens = self.mask_token * blank_tokens
         masked_tokens[:, start:end] = idx[:, start:end]
         sos_tokens = torch.full((batch_size, 1), self.sos_token, device=label.device)
+        masked_tokens = torch.cat((sos_tokens, masked_tokens), dim=1)
 
         if label is not None:
-            label_tokens = label + self.sos_tokens + 1
-            label_tokens = label.tokens.unsqueeze(1)
+            label_tokens = label + self.sos_token + 1
+            label_tokens = label_tokens.unsqueeze(1)
             input_tokens = torch.cat((label_tokens, masked_tokens), dim=1)
         else:
             input_tokens = torch.cat((sos_tokens, masked_tokens), dim=1)
@@ -136,7 +137,7 @@ class generateImages:
         return ratio
 
 
-    def generateTokens(self, label=None, idx=None, start=20, end=50):
+    def generateTokens(self, label=None, idx=None, start=10, end=55):
         #GETTING INPUTS
         if idx is None:
             inputs = self.createInputTokensNormal(self.batch_size, label)
@@ -180,10 +181,11 @@ class generateImages:
 
     
     def latentFromSequence(self, args, seq):
+        seq = seq.clamp_max(255)
         sequence = torch.flatten(seq)[:, None]
-        #encoding_indices = sequence.type(torch.int64).to(args.device)
-        encodings = torch.zeros(sequence.shape[0], args.num_codebook_vectors, device=args.device)
-        encodings.scatter_(1, sequence, 1)
+        encoding_indices = sequence.type(torch.int64).to(args.device)
+        encodings = torch.zeros(encoding_indices.shape[0], args.num_codebook_vectors, device=args.device)
+        encodings.scatter_(1, encoding_indices, 1)
         z_q = torch.matmul(encodings, self.codebook).view((seq.shape[0], 8, 8, 256))
         z_q = z_q.permute(0, 3, 1, 2).to(args.device)
 
@@ -195,7 +197,7 @@ class generateImages:
         self.vq_vae.eval()
         with torch.no_grad():
             decoded, indices = self.vq_vae.encode(imgs)
-            generated_tokens = self.generateTokens(label)
+            generated_tokens = self.generateTokens(label, indices)
             latent_space = self.latentFromSequence(args, generated_tokens)
             generated_images = self.vq_vae.decode(latent_space)
 
@@ -212,7 +214,7 @@ class generateImages:
             for imgs, label in tqdm(val_dataset):
                 imgs, label = imgs.to(args.device), label.to(args.device)
                 j = self.fullGenerationProcess(args, imgs, label, j)
-                if j == 5:
+                if j == 20:
                     break         
 
 
