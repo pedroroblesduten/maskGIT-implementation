@@ -34,6 +34,7 @@ def getArgs():
     args.save_losses = '/scratch2/pedroroblesduten/MASKGIT/losses'
     args.vqvae_load_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt/vqvae_bestVal_CIFAR10.pt'
     args.gpt_load_ckpt = '/scratch2/pedroroblesduten/MASKGIT/ckpt/MASKGIT_bestVAL.pt'
+    #args.gpt_load_ckpt = None
     args.save_results_path = '/scratch2/pedroroblesduten/MASKGIT/results/'
     
     #TRANSFORMERS ARGS

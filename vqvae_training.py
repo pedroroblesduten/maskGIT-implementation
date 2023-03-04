@@ -8,6 +8,7 @@ import os
 from tqdm import tqdm
 import numpy as np
 from PIL import Image
+from args_parameters import getArgs
 
 class VQVAE(nn.Module):
     def __init__(self, args):
@@ -157,36 +158,8 @@ class vqvaeTraining():
 
 
 if __name__ == '__main__': 
-    parser = argparse.ArgumentParser()
-
-    #VQ_VAE ARGS
-    parser.add_argument('--latent-dim', type=int, default=256)
-    parser.add_argument('--num_res_blocks', type=int, default=4)
-    parser.add_argument('--verbose', type=bool, default=False)
-    parser.add_argument('--num_codebook_vectors', type=int, default=256)
-    parser.add_argument('--beta', type=float, default=0.25)
-    parser.add_argument('--use_ema', type=bool, default=True)
-    parser.add_argument('--learning-rate', type=float, default=2.25e-05)
-    parser.add_argument('--beta1', type=float, default=0.5)
-    parser.add_argument('--beta2', type=float, default=0.9)
     
-    #DATASET ARGS
-    parser.add_argument('--dataset', type=str, default='CIFAR10')
-    parser.add_argument('--imagenetPath', type=str, default='/scratch2/pedroroblesduten/classical_datasets/imagenet')
-    parser.add_argument('--imagenetTxtPath', type=str, default='/scratch2/pedroroblesduten/classical_datasets/imagenet/txt_files')
-    parser.add_argument('--cifar10Path', type=str, default='/scratch2/pedroroblesduten/classical_datasets/cifar10')
-
-    #TRAINING ARGS
-    parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--device', type=str, default='cuda')
-    parser.add_argument('--patience', type=int, default=10)
-
-    #PATH ARGS
-    parser.add_argument('--save_ckpt', type=str, default='/scratch2/pedroroblesduten/MASKGIT/ckpt')
-    parser.add_argument('--save_losses', type=str, default='/scratch2/pedroroblesduten/MASKGIT/losses')
+    args = getArgs()
     
-    args = parser.parse_args()
-
     trainvqvae = vqvaeTraining(args)
 

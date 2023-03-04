@@ -98,7 +98,7 @@ class MlmLayer(nn.Module):
         return x     
 
 
-# ---- TRANSFORMERS CONFIGURATIONS ----a
+# ---- TRANSFORMERS CONFIGURATIONS ----
 @dataclass
 class MaskGITconfig:
     block_size: int = 1025
@@ -115,11 +115,11 @@ class MaskGITTransformer(nn.Module):
         super().__init__()
         self.pos_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
         self.tk_emb = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.layernorm = nn.LayerNorm(config.embedding_dim)
         self.dropout = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList()
         for _ in range(config.n_layers):
             self.blocks.append(Block(config))
-        self.layernorm = nn.LayerNorm(config.embedding_dim)
         self.mlmlayer = MlmLayer(config)
         self.bias = nn.Parameter(torch.zeros(config.block_size, config.vocab_size))
 
@@ -130,7 +130,7 @@ class MaskGITTransformer(nn.Module):
         token_embedding = self.tk_emb(x)
         positional_embedding = self.pos_emb(pos)
 
-        x = self.dropout(token_embedding + positional_embedding)
+        x = self.dropout(self.layernorm(token_embedding + positional_embedding))
 
         for block in self.blocks:
             x = block(x)

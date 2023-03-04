@@ -46,6 +46,7 @@ class CodebookEMA(nn.Module):
         encodings_indices = torch.argmin(d, dim=1).unsqueeze(1)
         encodings = torch.zeros(encodings_indices.shape[0], self.num_codebook_vectors, device=z.device)
         encodings.scatter_(1, encodings_indices, 1)
+
         if self.verbose:
             print(f'encodings shape: {encodings.shape}')
 
@@ -86,7 +87,6 @@ class CodebookEMA(nn.Module):
         if self.verbose:
             print(f'Shape dos indices: {encodings_indices.shape}')
             print(f'Shape do espaço latente: {z_q.shape}')
-        
 
         z_q = z_q.permute(0, 3, 1, 2)
     

@@ -143,12 +143,16 @@ class trainTransformers:
         iter_num = 0
         all_train_loss = []
         all_val_loss = []
+        
+        print('--> mask token: ', args.mask_token)
+        print('--> sos token: ', args.sos_token)
 
         self.vq_vae.eval()
         for epoch in range(args.transformer_epochs):
             epoch_val_losses = []
             epoch_train_losses = []
-
+            
+            # -- RUNNING FOR TRAINING DATA --
             self.transformer.train()
             for imgs, label in tqdm(train_dataset):
 
@@ -162,18 +166,24 @@ class trainTransformers:
                 imgs, label = imgs.to(args.device), label.to(args.device)
                 _, indices = self.vq_vae.encode(imgs)
                 masked_indices, target = maskSequence(indices, label, imgs)
+                #print('masked', masked_indices[0, :20], masked_indices.shape)
+                #print('target', target[0, :20], target.shape)
                 logits = self.transformer(masked_indices)
                 optimizer.zero_grad(set_to_none=True)
-                loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))            
+                loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+                
+                #print('loss 1: ', logits.reshape(-1, logits.size(-1)).shape)
+                #print('loss 2: ', target.reshape(-1).shape)
 
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 optimizer.step()
                 iter_num += 1
                 epoch_train_losses.append(loss.detach().cpu().numpy())
+
                 
                     
-                    
+            # -- RUNNING FOR VALIDATION DATA --        
             self.transformer.eval()
             for imgs, label in val_dataset:                
                 imgs, label = imgs.to(args.device), label.to(args.device)
@@ -183,8 +193,8 @@ class trainTransformers:
                     logits = self.transformer(masked_indices)
                 optimizer.zero_grad(set_to_none=True)
                 loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))          
-                epoch_val_losses.append(loss.detach().cpu().numpy())                   
-                
+                epoch_val_losses.append(loss.detach().cpu().numpy())
+               
 
                 
             train_loss, val_loss = np.mean(epoch_train_losses), np.mean(epoch_val_losses)

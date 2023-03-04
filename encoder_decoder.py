@@ -153,6 +153,7 @@ class Decoder(nn.Module):
                                   padding=1)
 
     def forward(self, x):
+        print('decode input', x.dtype)
         x = self.conv_in(x)
         x = self.res_blocks(x)
         for layer in self.layers:
@@ -161,12 +162,5 @@ class Decoder(nn.Module):
         x = self.relu(x)
         x = self.conv_out(x)
 
-        return x
-
-
-
-
-            
-
-
+        return x         
 
